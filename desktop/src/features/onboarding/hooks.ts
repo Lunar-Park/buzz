@@ -52,64 +52,22 @@ export async function initializeStarterChannels(
       console.warn("Failed to initialize public starter channels.", error);
     }
 
-    // Disabled: we don't want a Welcome channel. Our fleet agents are configured manually.
-    // const welcomeChannel = await ensureWelcomeChannel(
-    //   {
-    //     createChannel,
-    //     deleteChannel,
-    //     getChannelMembers,
-    //     getChannels,
-    //     updateChannel,
-    //   },
-    //   {
-    //     replaceExisting: forceFreshOnboarding,
-    //   },
-    // );
-    const welcomeChannel = {
-      id: "disabled",
-      name: "Welcome",
-      channelType: "stream",
-      visibility: "private",
-    } as Channel;
-
+    // Fork: no Welcome channel. Nothing synthetic goes into the channels
+    // cache — a stub Channel here (missing memberPubkeys etc.) crashes every
+    // consumer that iterates channels. Focus falls back to the first starter
+    // channel instead of the old Welcome channel.
     const starterChannelList = starterChannels?.channels ?? [];
     queryClient.setQueryData<Channel[]>(channelsQueryKey, (channels = []) => {
       const ensuredIds = new Set(
         starterChannelList.map((channel) => channel.id),
       );
-      ensuredIds.add(welcomeChannel.id);
       return [
         ...starterChannelList,
-        ...(starterChannelList.some(
-          (channel) => channel.id === welcomeChannel.id,
-        )
-          ? []
-          : [welcomeChannel]),
         ...channels.filter((channel) => !ensuredIds.has(channel.id)),
       ];
     });
-    // Disabled: welcome channel is disabled
-    // void seedWelcomeExperience(
-    //   queryClient,
-    //   welcomeChannel.id,
-    //   pubkey,
-    //   communityScope,
-    // );
     await queryClient.invalidateQueries({ queryKey: channelsQueryKey });
-    if (focus) {
-      // Disabled: welcome channel is disabled
-      // queryClient.setQueryData<Channel[]>(channelsQueryKey, (channels = []) => {
-      //   const byId = new Map(
-      //     [...channels, ...starterChannelList, welcomeChannel].map(
-      //       (channel) => [channel.id, channel],
-      //     ),
-      //   );
-      //   return [...byId.values()];
-      // });
-      // rememberPendingWelcomeChannel(welcomeChannel.id);
-      // notifyWelcomeChannelReady(welcomeChannel.id);
-    }
-    const focusChannelId = focus ? welcomeChannel.id : undefined;
+    const focusChannelId = focus ? starterChannelList[0]?.id : undefined;
     if (starterChannelsError) {
       return {
         ok: false,
