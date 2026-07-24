@@ -100,6 +100,19 @@ pub async fn restore_managed_agents_on_launch(
         return Ok(());
     }
 
+    // Fork: managed agents do NOT autostart on boot. Fleet agents are
+    // external network peers (buzz-connector); ACP agents are started
+    // explicitly from the UI. Set BUZZ_AGENT_AUTOSTART=1 to restore the
+    // upstream restore-on-launch behavior. Skipping here also skips the
+    // orphan sweep, which is safe: with autostart off there are no
+    // previous-session agent processes to clean up.
+    if !agent_autostart_enabled(std::env::var("BUZZ_AGENT_AUTOSTART").ok().as_deref()) {
+        eprintln!(
+            "buzz-desktop: managed-agent autostart disabled (set BUZZ_AGENT_AUTOSTART=1 to enable)"
+        );
+        return Ok(());
+    }
+
     let state = app.state::<AppState>();
 
     // ── Phase A (under lock): housekeeping + collect agents to restore ──
@@ -474,4 +487,32 @@ fn persist_restore_error(
     record.updated_at = util::now_iso();
     record.last_error = Some(error);
     save_managed_agents(app, &records)
+}
+
+/// Whether boot-time managed-agent restore is enabled.
+///
+/// Fork default is disabled; only an explicit `1` or `true` (from
+/// `BUZZ_AGENT_AUTOSTART`) turns autostart back on.
+fn agent_autostart_enabled(value: Option<&str>) -> bool {
+    matches!(value.map(str::trim), Some("1") | Some("true"))
+}
+
+#[cfg(test)]
+mod autostart_gate_tests {
+    use super::agent_autostart_enabled;
+
+    #[test]
+    fn autostart_is_disabled_by_default() {
+        assert!(!agent_autostart_enabled(None));
+        assert!(!agent_autostart_enabled(Some("")));
+        assert!(!agent_autostart_enabled(Some("0")));
+        assert!(!agent_autostart_enabled(Some("false")));
+    }
+
+    #[test]
+    fn autostart_enables_on_explicit_opt_in() {
+        assert!(agent_autostart_enabled(Some("1")));
+        assert!(agent_autostart_enabled(Some("true")));
+        assert!(agent_autostart_enabled(Some(" 1 ")));
+    }
 }

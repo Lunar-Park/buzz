@@ -50,12 +50,12 @@ downloads. Everything else is upstream, unmodified.
 
 | Patch | Kind | Status |
 |---|---|---|
-| `RespondTo::Nobody` variant, new default (agents don't auto-fire) | Rust | landed |
+| `RespondTo::Nobody` exposed in desktop types, new default (agents don't auto-fire; upstream supports `nobody` at the harness level since 0.4.24 but neither exposes nor defaults it) | Rust | landed |
 | `seedWelcomeExperience()` no-op (no Fizz/Honey/Bumble) | TS | landed |
 | TTS/STT model auto-downloads disabled at startup | Rust | landed |
 | `ensureWelcomeChannel()` disabled | TS | landed |
 | `useWelcomeKickoff()` gutted | TS | working tree |
-| Gate `agent-event-reconcile` boot provisioning | Rust | **TODO** — last embedded-agent leak: backend provisions agents on boot regardless of frontend |
+| Managed-agent autostart gated off (`BUZZ_AGENT_AUTOSTART=1` to re-enable) | Rust | landed |
 | Convert the no-op strips above into config gates | both | TODO — precondition for upstreaming |
 
 **Kept from upstream, deliberately:**
