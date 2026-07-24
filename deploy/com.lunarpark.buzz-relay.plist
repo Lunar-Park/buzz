@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Buzz relay LaunchAgent (production host).
+
+  The relay reads configuration from .env in the repo root (sourced by the
+  wrapper below). Infra (postgres/redis/minio) runs under colima — make sure
+  `colima` autostarts too (brew services start colima).
+
+  Install:
+    cp deploy/com.lunarpark.buzz-relay.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.lunarpark.buzz-relay.plist
+
+  Restart after a rebuild:
+    launchctl kickstart -k gui/$(id -u)/com.lunarpark.buzz-relay
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.lunarpark.buzz-relay</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>set -a; source .env; set +a; exec ./target/release/buzz-relay</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/selene/buzz</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/selene/Library/Logs/buzz-relay.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/selene/Library/Logs/buzz-relay.log</string>
+</dict>
+</plist>
