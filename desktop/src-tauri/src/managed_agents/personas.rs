@@ -108,6 +108,12 @@ const RETIRED_PERSONAS: &[(&str, &str)] = &[
 ];
 
 fn built_in_persona_records(now: &str) -> Vec<AgentDefinition> {
+    // Fork: the built-in persona pack (Fizz/Honey/Bumble) is not merged
+    // into the persona library — the fleet's agents are external peers via
+    // buzz-connector. Set BUZZ_BUILTIN_PERSONAS=1 to restore the pack.
+    if !builtin_personas_enabled(std::env::var("BUZZ_BUILTIN_PERSONAS").ok().as_deref()) {
+        return Vec::new();
+    }
     BUILT_IN_PERSONAS
         .iter()
         .map(|persona| AgentDefinition {
@@ -378,3 +384,30 @@ pub fn save_personas(app: &AppHandle, records: &[AgentDefinition]) -> Result<(),
 
 #[cfg(test)]
 mod tests;
+
+/// Whether the built-in persona pack is merged into the persona library.
+///
+/// Fork default is disabled; only an explicit opt-in re-enables it.
+fn builtin_personas_enabled(value: Option<&str>) -> bool {
+    matches!(value.map(str::trim), Some("1") | Some("true"))
+}
+
+#[cfg(test)]
+mod builtin_persona_gate_tests {
+    use super::*;
+
+    #[test]
+    fn builtin_pack_is_disabled_by_default() {
+        assert!(!builtin_personas_enabled(None));
+        assert!(!builtin_personas_enabled(Some("0")));
+        assert!(builtin_personas_enabled(Some("1")));
+        assert!(builtin_personas_enabled(Some("true")));
+    }
+
+    #[test]
+    fn built_in_records_empty_when_gated_off() {
+        // Gate reads the env var at call time; unset in the test process.
+        std::env::remove_var("BUZZ_BUILTIN_PERSONAS");
+        assert!(built_in_persona_records("2026-01-01T00:00:00Z").is_empty());
+    }
+}
