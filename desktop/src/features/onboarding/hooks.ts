@@ -1,23 +1,15 @@
 import * as React from "react";
 import { useQueryClient, type QueryStatus } from "@tanstack/react-query";
 import { toast } from "sonner";
-
-import {
-  managedAgentsQueryKey,
-  relayAgentsQueryKey,
-} from "@/features/agents/hooks";
 import { channelsQueryKey } from "@/features/channels/hooks";
 import {
   ensureStarterChannels,
   ensureWelcomeChannel,
   hasEnsuredWelcomeChannel,
-  markWelcomeChannelEnsured,
   notifyWelcomeChannelReady,
   rememberPendingWelcomeChannel,
 } from "@/features/onboarding/welcome";
 import { forceFreshOnboarding } from "@/features/onboarding/devFreshOnboarding";
-import { ensureWelcomeCanvas } from "@/features/onboarding/welcomeCanvas";
-import { ensureWelcomeTeam } from "@/features/onboarding/welcomeGuide";
 import { useProfileQuery } from "@/features/profile/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -37,7 +29,7 @@ export type ChannelInitResult =
   | { ok: true; focusChannelId?: string }
   | { ok: false; reason: string; focusChannelId?: string };
 
-const welcomeSeedPromises = new Map<string, Promise<void>>();
+const _welcomeSeedPromises = new Map<string, Promise<void>>();
 
 function seedWelcomeExperience(
   _queryClient: ReturnType<typeof useQueryClient>,
