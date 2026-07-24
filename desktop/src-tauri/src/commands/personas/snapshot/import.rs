@@ -168,9 +168,10 @@ pub(crate) fn resolve_snapshot_import_behavior(
             // Keep: preserve source mode and validated list.
             (source_mode, normalized_allowlist)
         } else if is_source_allowlist_mode {
-            // Clear on allowlist-mode: must downgrade mode to owner-only because
-            // allowlist mode without entries is an invalid state.
-            (Some(RespondTo::OwnerOnly), Vec::new())
+            // Clear on allowlist-mode: allowlist mode without entries is an
+            // invalid state, so downgrade to the default mode. Fork: the
+            // default is Nobody — cleared agents stay silent until configured.
+            (Some(RespondTo::default()), Vec::new())
         } else {
             // Clear on non-allowlist mode: preserve source mode, empty the list.
             // Non-allowlist modes are valid without entries.

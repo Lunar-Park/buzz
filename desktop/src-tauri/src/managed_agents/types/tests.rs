@@ -96,8 +96,9 @@ fn managed_agent_record_with_auth_tag_round_trips() {
 use super::{validate_respond_to_allowlist, RespondTo};
 
 #[test]
-fn respond_to_default_is_owner_only() {
-    assert_eq!(RespondTo::default(), RespondTo::OwnerOnly);
+fn respond_to_default_is_nobody() {
+    // Fork: agents are silent until explicitly configured to respond.
+    assert_eq!(RespondTo::default(), RespondTo::Nobody);
 }
 
 #[test]
@@ -124,16 +125,19 @@ fn respond_to_serde_is_kebab_case() {
 
 #[test]
 fn respond_to_rejects_unknown_modes() {
-    // `nobody` is a valid harness mode but intentionally not exposed
-    // through the desktop request types.
-    assert!(serde_json::from_str::<RespondTo>("\"nobody\"").is_err());
+    // Fork: `nobody` is exposed through the desktop types (and is the
+    // default) so agents can be kept silent until explicitly enabled.
+    let parsed: RespondTo = serde_json::from_str("\"nobody\"").unwrap();
+    assert_eq!(parsed, RespondTo::Nobody);
     assert!(serde_json::from_str::<RespondTo>("\"OwnerOnly\"").is_err());
+    assert!(serde_json::from_str::<RespondTo>("\"never\"").is_err());
 }
 
-/// Records persisted before this feature must continue to load,
-/// defaulting to OwnerOnly (the safe, matches-harness-default value).
+/// Records persisted before this feature must continue to load. Fork:
+/// they default to Nobody (silent) rather than OwnerOnly — quiet until
+/// explicitly configured.
 #[test]
-fn managed_agent_record_without_respond_to_fields_defaults_to_owner_only() {
+fn managed_agent_record_without_respond_to_fields_defaults_to_nobody() {
     let record: ManagedAgentRecord = serde_json::from_str(
         r#"{
             "pubkey": "abcd1234",
@@ -155,7 +159,7 @@ fn managed_agent_record_without_respond_to_fields_defaults_to_owner_only() {
         }"#,
     )
     .expect("legacy record without respond_to fields should deserialize");
-    assert_eq!(record.respond_to, RespondTo::OwnerOnly);
+    assert_eq!(record.respond_to, RespondTo::Nobody);
     assert!(record.respond_to_allowlist.is_empty());
 }
 

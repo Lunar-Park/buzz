@@ -40,30 +40,14 @@ export type ChannelInitResult =
 const welcomeSeedPromises = new Map<string, Promise<void>>();
 
 function seedWelcomeExperience(
-  queryClient: ReturnType<typeof useQueryClient>,
-  channelId: string,
-  pubkey: string | null,
-  communityScope: string | null,
+  _queryClient: ReturnType<typeof useQueryClient>,
+  _channelId: string,
+  _pubkey: string | null,
+  _communityScope: string | null,
 ) {
-  const key = `${communityScope ?? ""}:${channelId}`;
-  const current = welcomeSeedPromises.get(key);
-  if (current) return current;
-
-  const promise = (async () => {
-    try {
-      await ensureWelcomeTeam(channelId, communityScope);
-      await ensureWelcomeCanvas(channelId);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: managedAgentsQueryKey }),
-        queryClient.invalidateQueries({ queryKey: relayAgentsQueryKey }),
-      ]);
-      markWelcomeChannelEnsured(pubkey, communityScope);
-    } catch (error) {
-      console.warn("Failed to seed the private Welcome experience.", error);
-    }
-  })().finally(() => welcomeSeedPromises.delete(key));
-  welcomeSeedPromises.set(key, promise);
-  return promise;
+  // Disabled: we don't want built-in agents (Fizz/Honey/Bumble) or
+  // welcome canvas auto-seeded. Our fleet agents will be configured manually.
+  return Promise.resolve();
 }
 
 export async function initializeStarterChannels(

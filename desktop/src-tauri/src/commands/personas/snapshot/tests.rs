@@ -682,9 +682,10 @@ fn import_allowlist_keep_with_valid_list_succeeds() {
 }
 
 /// keep_allowlist = false on an allowlist-mode source with a non-empty list
-/// downgrades to owner-only and clears the allowlist.
+/// downgrades to the default mode and clears the allowlist. Fork: the
+/// default is Nobody — cleared agents stay silent until configured.
 #[test]
-fn import_allowlist_clear_downgrades_to_owner_only() {
+fn import_allowlist_clear_downgrades_to_default() {
     use crate::managed_agents::RespondTo;
     let raw = "aabbcc".repeat(11)[..64].to_string();
     let minted = resolve_snapshot_import_behavior(
@@ -696,8 +697,8 @@ fn import_allowlist_clear_downgrades_to_owner_only() {
     .unwrap();
     assert_eq!(
         minted.respond_to,
-        RespondTo::OwnerOnly,
-        "clear on allowlist-mode must yield owner-only"
+        RespondTo::default(),
+        "clear on allowlist-mode must yield the default mode"
     );
     assert!(
         minted.respond_to_allowlist.is_empty(),

@@ -541,10 +541,13 @@ pub fn run() {
                 event_sync::spawn_event_sync(app_handle.clone(), owner_keys);
             }
 
-            if let Some(mgr) = huddle::models::global_model_manager() {
-                mgr.start_stt_download(state.http_client.clone());
-                mgr.start_tts_download(state.http_client.clone());
-            }
+            // Disabled: don't auto-download ~100MB of voice models on every
+            // startup. Models download on-demand when huddle/transcription is
+            // actually used.
+            // if let Some(mgr) = huddle::models::global_model_manager() {
+            //     mgr.start_stt_download(state.http_client.clone());
+            //     mgr.start_tts_download(state.http_client.clone());
+            // }
 
             // Handle deep link URLs received while the app is running (macOS)
             // and on cold start. The single-instance plugin handles forwarding
