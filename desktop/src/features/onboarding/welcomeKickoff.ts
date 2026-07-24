@@ -1,14 +1,7 @@
 import * as React from "react";
 
-import {
-  managedAgentsQueryKey,
-  useAcpRuntimesQuery,
-  useManagedAgentsQuery,
-} from "@/features/agents/hooks";
-import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
-import { useCommunities } from "@/features/communities/useCommunities";
+import {} from "@/features/agents/hooks";
 import { welcomeKickoffMarker } from "@/features/onboarding/devFreshOnboarding";
-import { resolveAgentReadiness } from "@/features/onboarding/ui/agentReadiness";
 import {
   pickWelcomeTeamStarterAgentForRelay,
   WELCOME_TEAM_STARTERS,
@@ -21,12 +14,9 @@ import {
   startManagedAgent,
   stopManagedAgent,
 } from "@/shared/api/tauriManagedAgents";
-import { hasManagedAgentChannelMessageMarker } from "@/shared/api/tauriManagedAgentMessageMarkers";
-import { sendManagedAgentChannelMessage } from "@/shared/api/tauriManagedAgentMessages";
-import { getPresence, listManagedAgents } from "@/shared/api/tauri";
+import { getPresence } from "@/shared/api/tauri";
 import type { Channel, ManagedAgent, RelayEvent } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
-import { useQueryClient } from "@tanstack/react-query";
 
 export const WELCOME_KICKOFF_OPENER_MARKER = "buzz-welcome-kickoff.opener.v1";
 export const WELCOME_KICKOFF_CLOSER_MARKER = "buzz-welcome-kickoff.closer.v1";
@@ -35,7 +25,6 @@ export const WELCOME_KICKOFF_PROVIDER_MARKER =
 
 const openerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_OPENER_MARKER);
 const closerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_CLOSER_MARKER);
-const _providerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_PROVIDER_MARKER);
 
 export const WELCOME_KICKOFF_PROVIDER_MESSAGE =
   "To get started with agents, connect to an AI provider in Settings. Once you're connected, come back here and we'll introduce the team.";
@@ -85,28 +74,6 @@ const kickoffCoordinator = createWelcomeKickoffCoordinator();
 const closerInFlight = new Set<string>();
 const TEAMMATE_READY_POLL_MS = 250;
 const TEAMMATE_READY_WAIT_MS = 60_000;
-/**
- * Give-up backstop for teammates that are neither intro'd nor detectably failed
- * — i.e. alive but silent. **Not** an expectation of how fast an intro arrives.
- *
- * It does not gate the happy path: once every teammate is resolved (intro'd, or
- * `failedAfterKickoff`-detected), the closer fires on `CLOSER_BEAT_MS` and this
- * timer is cleared. Raising it costs the normal case nothing — it only delays
- * the moment we give up on a silent teammate.
- *
- * So it must be long enough that "taking longer than expected" is *true* when it
- * fires. `unresolved` means "no intro seen yet", which is ignorance, not a fact;
- * announcing it early states a falsehood, and the closer marker is terminal
- * (`sendWelcomeKickoffCloser`) so nothing ever corrects it. At 15s this
- * routinely beat two cold agents through harness dispatch + a full LLM turn
- * (observed 2026-07-18: intros landed ~60s in, and the false "taking longer"
- * closer had already been stamped final at 15s). A real failure does not wait
- * for this — `failedAfterKickoff` resolves crashed teammates immediately.
- *
- * See docs/welcome-kickoff-silent-failures.md §1.
- */
-const _TEAMMATE_INTRO_BACKSTOP_MS = 120_000;
-const _CLOSER_BEAT_MS = 3_000;
 const closerAbortControllers = new Map<string, AbortController>();
 const closerTimeouts = new Map<
   string,
@@ -137,24 +104,6 @@ export function resolveWelcomeAgentSet(
     lead: ordered[0] as ManagedAgent,
     teammates: [ordered[1] as ManagedAgent, ordered[2] as ManagedAgent],
   };
-}
-
-function normalizeRelayUrl(relayUrl?: string | null) {
-  return relayUrl?.trim().replace(/\/+$/, "") ?? null;
-}
-
-function resolveWelcomeAgentSetForRelay(
-  agents: readonly ManagedAgent[],
-  relayUrl?: string | null,
-) {
-  const normalizedRelayUrl = normalizeRelayUrl(relayUrl);
-  return resolveWelcomeAgentSet(
-    agents.filter(
-      (agent) =>
-        !normalizedRelayUrl ||
-        normalizeRelayUrl(agent.relayUrl) === normalizedRelayUrl,
-    ),
-  );
 }
 
 export function buildWelcomeKickoffOpener(
@@ -328,30 +277,6 @@ export function classifyWelcomeKickoffResolution(
   return { failed, unresolved };
 }
 
-async function _resolveLatestWelcomeAgentSet({
-  fallback,
-  queryClient,
-  relayUrl,
-}: {
-  fallback: WelcomeAgentSet;
-  queryClient: ReturnType<typeof useQueryClient>;
-  relayUrl?: string | null;
-}) {
-  const agents = await queryClient.fetchQuery({
-    queryKey: managedAgentsQueryKey,
-    queryFn: listManagedAgents,
-  });
-  return resolveWelcomeAgentSetForRelay(agents, relayUrl) ?? fallback;
-}
-
-async function markerExists(channelId: string, marker: string) {
-  return hasManagedAgentChannelMessageMarker({
-    channelId,
-    marker,
-    markerScope: "channel",
-  });
-}
-
 export function welcomeTeammateNeedsRestart(
   agent: ManagedAgent,
   leadPubkey: string,
@@ -458,40 +383,12 @@ export async function restartWelcomeTeammate(
   return startAgent(agent.pubkey);
 }
 
-async function _sendWelcomeKickoffCloser({
-  agentSet,
-  channelId,
-  content,
-  opener,
-}: {
-  agentSet: WelcomeAgentSet;
-  channelId: string;
-  content: string;
-  opener: RelayEvent;
-}) {
-  if (await markerExists(channelId, closerMarker)) return;
-
-  await sendManagedAgentChannelMessage({
-    agentPubkey: agentSet.lead.pubkey,
-    channelId,
-    content,
-    marker: closerMarker,
-    markerScope: "channel",
-    parentEventId: opener.id,
-  });
-}
-
 /** Runs the Welcome choreography only while the Welcome channel is focused. */
 export function useWelcomeKickoff(
   activeChannel: Channel | null,
   channelEvents: readonly RelayEvent[],
   _onKickoffOpenerPosted?: (eventId: string) => void,
 ) {
-  const _queryClient = useQueryClient();
-  const { activeCommunity } = useCommunities();
-  const runtimesQuery = useAcpRuntimesQuery();
-  const managedAgentsQuery = useManagedAgentsQuery();
-  const { globalConfig, isLoading: configLoading } = useGlobalAgentConfig();
   const channelId = activeChannel?.id ?? null;
   const isActiveWelcome = isWelcomeChannel(activeChannel);
   const focusedWelcomeChannelRef = React.useRef<string | null>(null);
@@ -534,18 +431,6 @@ export function useWelcomeKickoff(
   }, [channelId, kickoffEvents, kickoffResolved]);
   const channelEventsRef = React.useRef(kickoffEvents);
   channelEventsRef.current = kickoffEvents;
-  const _agentSet = React.useMemo(
-    () =>
-      resolveWelcomeAgentSetForRelay(
-        managedAgentsQuery.data ?? [],
-        activeCommunity?.relayUrl,
-      ),
-    [activeCommunity?.relayUrl, managedAgentsQuery.data],
-  );
-  const _readiness = React.useMemo(
-    () => resolveAgentReadiness(runtimesQuery.data ?? [], globalConfig),
-    [globalConfig, runtimesQuery.data],
-  );
   React.useEffect(() => {
     // Disabled: we don't want built-in agents (Fizz/Honey/Bumble) or
     // the welcome kickoff choreography. Our fleet agents are configured manually.

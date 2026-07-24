@@ -22,18 +22,8 @@ export type ChannelInitResult =
   | { ok: true; focusChannelId?: string }
   | { ok: false; reason: string; focusChannelId?: string };
 
-const _welcomeSeedPromises = new Map<string, Promise<void>>();
-
-function _seedWelcomeExperience(
-  _queryClient: ReturnType<typeof useQueryClient>,
-  _channelId: string,
-  _pubkey: string | null,
-  _communityScope: string | null,
-) {
-  // Disabled: we don't want built-in agents (Fizz/Honey/Bumble) or
-  // welcome canvas auto-seeded. Our fleet agents will be configured manually.
-  return Promise.resolve();
-}
+// Welcome-experience seeding (built-in agents, welcome canvas) is stripped
+// in this fork — fleet agents are configured manually via buzz-connector.
 
 export async function initializeStarterChannels(
   queryClient: ReturnType<typeof useQueryClient>,
