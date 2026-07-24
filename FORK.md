@@ -54,7 +54,9 @@ downloads. Everything else is upstream, unmodified.
 | `seedWelcomeExperience()` no-op (no Fizz/Honey/Bumble) | TS | landed |
 | TTS/STT model auto-downloads disabled at startup | Rust | landed |
 | `ensureWelcomeChannel()` disabled | TS | landed |
-| `useWelcomeKickoff()` gutted | TS | working tree |
+| `useWelcomeKickoff()` gutted; dead strip code fully removed (production tsc) | TS | landed |
+| No stub Welcome channel in the channels cache (crashed agent management) | TS | landed |
+| Built-in persona pack gated off (`BUZZ_BUILTIN_PERSONAS=1` to re-enable) — Fizz/Honey/Bumble no longer force-merged, deletions stick | Rust | landed |
 | Managed-agent autostart gated off (`BUZZ_AGENT_AUTOSTART=1` to re-enable) | Rust | landed |
 | Convert the no-op strips above into config gates | both | TODO — precondition for upstreaming |
 
