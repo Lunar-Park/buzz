@@ -4,6 +4,7 @@
 //! event. With `--envelope v1`, lifecycle records use the same stdout stream.
 //! Human diagnostics remain on stderr.
 
+use std::collections::HashSet;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -12,12 +13,13 @@ use std::time::Duration;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::client::{normalize_events, BuzzClient};
+use crate::client::{extract_d_tag, normalize_events, BuzzClient};
 use crate::error::CliError;
-use crate::validate::validate_uuid;
+use crate::validate::parse_uuid;
 
 /// Default kinds for channel traffic. Matches `messages get`.
 const DEFAULT_KINDS: &[u32] = &[9, 40002, 40008, 45001, 45003];
+const MAX_LISTEN_CHANNELS: usize = 1024;
 
 pub(crate) fn parse_kinds(raw: Option<&str>) -> Result<Vec<u32>, CliError> {
     match raw {
@@ -47,8 +49,9 @@ pub(crate) fn parse_kinds(raw: Option<&str>) -> Result<Vec<u32>, CliError> {
 
 /// Build REQ filters for `buzz listen`.
 ///
-/// When both channel and mention constraints are present, they are applied in a
-/// single filter so the relay returns events matching channel AND mention.
+/// Each channel gets its own filter and relay subscription. Buzz deliberately
+/// excludes logically global subscriptions from live channel fan-out, so a
+/// multi-value `#h` filter cannot implement live multi-channel listening.
 pub(crate) fn build_listen_filters(
     channels: &[String],
     mentions_of_me: bool,
@@ -56,29 +59,76 @@ pub(crate) fn build_listen_filters(
     kinds: &[u32],
     since: Option<u64>,
 ) -> Result<Vec<serde_json::Value>, CliError> {
-    if channels.is_empty() && !mentions_of_me {
+    if channels.is_empty() {
+        return Err(CliError::Usage(
+            "buzz listen requires at least one resolved channel".into(),
+        ));
+    }
+    let mut unique_channels = Vec::new();
+    let mut seen = HashSet::new();
+    for channel in channels {
+        let channel = parse_uuid(channel)?.to_string();
+        if seen.insert(channel.clone()) {
+            unique_channels.push(channel);
+        }
+    }
+    if unique_channels.len() > MAX_LISTEN_CHANNELS {
+        return Err(CliError::Usage(format!(
+            "buzz listen supports at most {MAX_LISTEN_CHANNELS} channels"
+        )));
+    }
+
+    Ok(unique_channels
+        .into_iter()
+        .map(|channel| {
+            let mut filter = json!({
+                "kinds": kinds,
+                "#h": [channel],
+            });
+            if mentions_of_me {
+                filter["#p"] = json!([my_pubkey_hex]);
+            }
+            if let Some(since) = since {
+                filter["since"] = json!(since);
+            }
+            filter
+        })
+        .collect())
+}
+
+fn channel_ids_from_metadata(events: &[serde_json::Value]) -> Vec<String> {
+    let mut channels: Vec<String> = events
+        .iter()
+        .filter_map(|event| parse_uuid(&extract_d_tag(event)).ok())
+        .map(|channel| channel.to_string())
+        .collect();
+    channels.sort_unstable();
+    channels.dedup();
+    channels
+}
+
+async fn resolve_listen_channels(
+    client: &BuzzClient,
+    channels: Vec<String>,
+    mentions_of_me: bool,
+) -> Result<Vec<String>, CliError> {
+    if !channels.is_empty() {
+        return Ok(channels);
+    }
+    if !mentions_of_me {
         return Err(CliError::Usage(
             "buzz listen requires --channel <UUID> and/or --mentions-of-me".into(),
         ));
     }
-    for channel in channels {
-        validate_uuid(channel)?;
-    }
 
-    let mut filter = json!({
-        "kinds": kinds,
-    });
-    if !channels.is_empty() {
-        filter["#h"] = json!(channels);
+    let metadata = client.query_all(json!({"kinds": [39000]})).await?;
+    let channels = channel_ids_from_metadata(&metadata);
+    if channels.is_empty() {
+        return Err(CliError::NotFound(
+            "no visible channels available for --mentions-of-me".into(),
+        ));
     }
-    if mentions_of_me {
-        filter["#p"] = json!([my_pubkey_hex]);
-    }
-    if let Some(since) = since {
-        filter["since"] = json!(since);
-    }
-
-    Ok(vec![filter])
+    Ok(channels)
 }
 
 fn http_to_ws(http_url: &str) -> String {
@@ -167,6 +217,45 @@ async fn wait_for_shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
+fn map_ws_error(context: &str, error: buzz_ws_client::WsClientError) -> CliError {
+    use buzz_ws_client::WsClientError;
+
+    let detail = error.to_string();
+    match error {
+        WsClientError::WebSocket(_) | WsClientError::Timeout | WsClientError::ConnectionClosed => {
+            CliError::Transport(format!("{context}: {detail}"))
+        }
+        WsClientError::AuthFailed(_) | WsClientError::NoAuthChallenge => {
+            CliError::Auth(format!("{context}: {detail}"))
+        }
+        WsClientError::Url(_) => CliError::Usage(format!("{context}: {detail}")),
+        WsClientError::EventBuilder(_) => CliError::Key(format!("{context}: {detail}")),
+        WsClientError::Json(_)
+        | WsClientError::UnexpectedMessage(_)
+        | WsClientError::EventRejected(_) => {
+            CliError::Other(format!("{context}: protocol error: {detail}"))
+        }
+    }
+}
+
+fn relay_closed_error(message: &str) -> CliError {
+    if message.starts_with("auth-required:") || message.starts_with("restricted:") {
+        CliError::Auth(format!("subscription closed: {message}"))
+    } else {
+        CliError::Other(format!("subscription closed: {message}"))
+    }
+}
+
+async fn sleep_with_shutdown(duration: Duration, running: &AtomicBool) {
+    let deadline = tokio::time::Instant::now() + duration;
+    while running.load(Ordering::SeqCst) {
+        let Some(remaining) = deadline.checked_duration_since(tokio::time::Instant::now()) else {
+            break;
+        };
+        tokio::time::sleep(remaining.min(Duration::from_millis(100))).await;
+    }
+}
+
 /// Run the listen loop until shutdown or fatal error.
 pub async fn cmd_listen(
     client: &BuzzClient,
@@ -179,6 +268,7 @@ pub async fn cmd_listen(
 ) -> Result<(), CliError> {
     let kinds = parse_kinds(kinds_raw.as_deref())?;
     let my_pubkey = client.keys().public_key().to_hex();
+    let channels = resolve_listen_channels(client, channels, mentions_of_me).await?;
     let filters = build_listen_filters(&channels, mentions_of_me, &my_pubkey, &kinds, since)?;
     let ws_url = http_to_ws(client.relay_url());
     let running = Arc::new(AtomicBool::new(true));
@@ -198,7 +288,7 @@ pub async fn cmd_listen(
                 if !running.load(Ordering::SeqCst) {
                     break;
                 }
-                if !reconnect {
+                if !reconnect || !crate::error::is_retryable_error(&error) {
                     let _ = write_lifecycle(envelope, "fatal", Some(&error.to_string()));
                     return Err(error);
                 }
@@ -216,7 +306,7 @@ pub async fn cmd_listen(
         if !reconnect || !running.load(Ordering::SeqCst) {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+        sleep_with_shutdown(Duration::from_millis(backoff_ms), running.as_ref()).await;
         backoff_ms = backoff_ms.saturating_mul(2).min(MAX_BACKOFF_MS);
     }
 
@@ -235,28 +325,49 @@ async fn listen_session(
     let mut conn =
         NostrWsConnection::connect_authenticated(ws_url, client.keys(), client.auth_tag())
             .await
-            .map_err(|e| CliError::Other(format!("websocket: {e}")))?;
+            .map_err(|error| map_ws_error("websocket connect", error))?;
 
     write_lifecycle(envelope, "connected", None)?;
 
-    let sub_id = format!("buzz-listen-{}", &Uuid::new_v4().to_string()[..8]);
-    let mut req = vec![json!("REQ"), json!(sub_id)];
-    for filter in filters {
-        req.push(filter.clone());
+    let subscriptions: Vec<(String, serde_json::Value)> = filters
+        .iter()
+        .map(|filter| {
+            (
+                format!("buzz-listen-{}", &Uuid::new_v4().to_string()[..8]),
+                filter.clone(),
+            )
+        })
+        .collect();
+    let subscription_ids: HashSet<String> = subscriptions
+        .iter()
+        .map(|(sub_id, _)| sub_id.clone())
+        .collect();
+    let mut awaiting_eose = subscription_ids.clone();
+    let mut eose_emitted = false;
+
+    for (sub_id, filter) in &subscriptions {
+        conn.send_raw(&json!(["REQ", sub_id, filter]))
+            .await
+            .map_err(|error| map_ws_error("websocket subscribe", error))?;
     }
-    conn.send_raw(&json!(req))
-        .await
-        .map_err(|e| CliError::Other(format!("websocket send: {e}")))?;
 
     while running.load(Ordering::SeqCst) {
         let msg = match conn.next_event(Duration::from_millis(500)).await {
             Ok(msg) => msg,
             Err(buzz_ws_client::WsClientError::Timeout) => continue,
-            Err(error) => return Err(CliError::Other(format!("websocket: {error}"))),
+            Err(error) => return Err(map_ws_error("websocket receive", error)),
         };
 
         match msg {
-            RelayMessage::Event { event, .. } => {
+            RelayMessage::Event {
+                subscription_id,
+                event,
+            } => {
+                if !subscription_ids.contains(&subscription_id) {
+                    return Err(CliError::Other(format!(
+                        "websocket receive: protocol error: unknown subscription {subscription_id}"
+                    )));
+                }
                 let raw = serde_json::to_value(event.as_ref())
                     .map_err(|e| CliError::Other(format!("event serialize: {e}")))?;
                 let normalized = normalize_events(std::slice::from_ref(&raw));
@@ -265,10 +376,26 @@ async fn listen_session(
                 let event = events.into_iter().next().unwrap_or_else(|| json!({}));
                 write_stdout_record(&event_record(event, envelope))?;
             }
-            RelayMessage::Eose { .. } => write_lifecycle(envelope, "eose", None)?,
-            RelayMessage::Closed { message, .. } => {
+            RelayMessage::Eose { subscription_id } => {
+                if awaiting_eose.remove(&subscription_id)
+                    && awaiting_eose.is_empty()
+                    && !eose_emitted
+                {
+                    write_lifecycle(envelope, "eose", None)?;
+                    eose_emitted = true;
+                }
+            }
+            RelayMessage::Closed {
+                subscription_id,
+                message,
+            } => {
+                if !subscription_ids.contains(&subscription_id) {
+                    return Err(CliError::Other(format!(
+                        "websocket receive: protocol error: unknown subscription {subscription_id}"
+                    )));
+                }
                 write_lifecycle(envelope, "closed", Some(&message))?;
-                return Err(CliError::Other(format!("subscription closed: {message}")));
+                return Err(relay_closed_error(&message));
             }
             RelayMessage::Notice { message } => {
                 eprintln!("{}", json!({"notice": message}));
@@ -277,7 +404,9 @@ async fn listen_session(
         }
     }
 
-    let _ = conn.send_raw(&json!(["CLOSE", sub_id])).await;
+    for sub_id in subscription_ids {
+        let _ = conn.send_raw(&json!(["CLOSE", sub_id])).await;
+    }
     let _ = conn.disconnect().await;
     Ok(())
 }
@@ -313,11 +442,19 @@ mod tests {
     #[test]
     fn mentions_filter_uses_p_tag() {
         let pubkey = "b".repeat(64);
-        let filters = build_listen_filters(&[], true, &pubkey, DEFAULT_KINDS, None).unwrap();
+        let channel = "11111111-1111-1111-1111-111111111111".to_string();
+        let filters = build_listen_filters(
+            std::slice::from_ref(&channel),
+            true,
+            &pubkey,
+            DEFAULT_KINDS,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(filters.len(), 1);
         assert_eq!(filters[0]["#p"][0], pubkey);
-        assert!(filters[0].get("#h").is_none());
+        assert_eq!(filters[0]["#h"][0], channel);
     }
 
     #[test]
@@ -336,6 +473,81 @@ mod tests {
         assert_eq!(filters.len(), 1);
         assert_eq!(filters[0]["#h"][0], channel);
         assert_eq!(filters[0]["#p"][0], pubkey);
+    }
+
+    #[test]
+    fn multiple_channels_get_independent_filters() {
+        let channels = vec![
+            "11111111-1111-1111-1111-111111111111".to_string(),
+            "22222222-2222-2222-2222-222222222222".to_string(),
+        ];
+        let filters =
+            build_listen_filters(&channels, true, &"d".repeat(64), DEFAULT_KINDS, None).unwrap();
+
+        assert_eq!(filters.len(), 2);
+        assert_eq!(filters[0]["#h"], json!([channels[0]]));
+        assert_eq!(filters[1]["#h"], json!([channels[1]]));
+        assert_eq!(filters[0]["#p"], json!(["d".repeat(64)]));
+        assert_eq!(filters[1]["#p"], json!(["d".repeat(64)]));
+    }
+
+    #[test]
+    fn duplicate_channels_are_canonicalized_and_deduplicated() {
+        let filters = build_listen_filters(
+            &[
+                "11111111-1111-1111-1111-111111111111".to_string(),
+                "11111111111111111111111111111111".to_string(),
+            ],
+            false,
+            &"a".repeat(64),
+            DEFAULT_KINDS,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(filters.len(), 1);
+        assert_eq!(
+            filters[0]["#h"],
+            json!(["11111111-1111-1111-1111-111111111111"])
+        );
+    }
+
+    #[test]
+    fn metadata_channel_ids_are_valid_sorted_and_unique() {
+        let events = json!([
+            {"tags": [["d", "22222222-2222-2222-2222-222222222222"]]},
+            {"tags": [["d", "not-a-channel"]]},
+            {"tags": [["d", "11111111111111111111111111111111"]]},
+            {"tags": [["d", "22222222-2222-2222-2222-222222222222"]]}
+        ]);
+
+        assert_eq!(
+            channel_ids_from_metadata(events.as_array().unwrap()),
+            vec![
+                "11111111-1111-1111-1111-111111111111",
+                "22222222-2222-2222-2222-222222222222",
+            ]
+        );
+    }
+
+    #[test]
+    fn websocket_disconnect_is_retryable_network_error() {
+        let error = map_ws_error(
+            "websocket receive",
+            buzz_ws_client::WsClientError::ConnectionClosed,
+        );
+
+        assert!(matches!(error, CliError::Transport(_)));
+        assert!(crate::error::is_retryable_error(&error));
+        assert_eq!(crate::error::exit_code(&error), 2);
+    }
+
+    #[test]
+    fn restricted_subscription_close_is_auth_error() {
+        let error = relay_closed_error("restricted: not a channel member");
+
+        assert!(matches!(error, CliError::Auth(_)));
+        assert_eq!(crate::error::exit_code(&error), 3);
     }
 
     #[test]
