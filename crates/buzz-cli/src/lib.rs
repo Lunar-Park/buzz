@@ -171,8 +171,39 @@ pub enum OutputFormat {
     Compact,
 }
 
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum ListenEnvelope {
+    /// Existing flat event objects, one per stdout line
+    #[value(name = "flat")]
+    Flat,
+    /// Versioned v1 event and lifecycle envelopes
+    #[value(name = "v1")]
+    V1,
+}
+
 #[derive(Subcommand)]
 enum Cmd {
+    /// Stream matching relay events as newline-delimited JSON
+    Listen {
+        /// Channel UUID to subscribe to. Repeat for multiple channels.
+        #[arg(long = "channel")]
+        channels: Vec<String>,
+        /// Only receive events that p-tag this CLI identity
+        #[arg(long, default_value_t = false)]
+        mentions_of_me: bool,
+        /// Comma-separated event kinds. Defaults to Buzz message kinds.
+        #[arg(long)]
+        kinds: Option<String>,
+        /// Unix timestamp lower bound for replay
+        #[arg(long)]
+        since: Option<u64>,
+        /// Output envelope schema
+        #[arg(long, value_enum, default_value_t = ListenEnvelope::Flat)]
+        envelope: ListenEnvelope,
+        /// Disable automatic reconnect with exponential backoff
+        #[arg(long, default_value_t = false)]
+        no_reconnect: bool,
+    },
     /// Draft owner-reviewed agent creation and updates
     #[command(subcommand)]
     Agents(AgentsCmd),
@@ -1770,6 +1801,25 @@ async fn run(cli: Cli) -> Result<(), CliError> {
     let client = BuzzClient::new(relay_url, keys, auth_tag, auth_tag_json)?;
 
     match cli.command {
+        Cmd::Listen {
+            channels,
+            mentions_of_me,
+            kinds,
+            since,
+            envelope,
+            no_reconnect,
+        } => {
+            commands::listen::cmd_listen(
+                &client,
+                channels,
+                mentions_of_me,
+                kinds,
+                since,
+                envelope,
+                !no_reconnect,
+            )
+            .await
+        }
         Cmd::Agents(sub) => commands::agents::dispatch(sub, &client).await,
         Cmd::Messages(sub) => commands::messages::dispatch(sub, &client, &cli.format).await,
         Cmd::Channels(sub) => commands::channels::dispatch(sub, &client, &cli.format).await,
@@ -1815,6 +1865,7 @@ mod tests {
             "emoji",
             "feed",
             "issues",
+            "listen",
             "media",
             "mem",
             "messages",
