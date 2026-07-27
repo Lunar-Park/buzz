@@ -31,6 +31,9 @@ All output is JSON on stdout. Errors are JSON on stderr. Exit codes: 0=ok, 1=use
 # Set relay URL (defaults to http://localhost:3000)
 export BUZZ_RELAY_URL="https://relay.example.com"
 
+# Realtime external-agent ingress
+buzz listen --channel <uuid> --mentions-of-me --envelope v1 --no-reconnect
+
 # Messages
 buzz messages send --channel <uuid> --content "Hello"
 buzz messages send --channel <uuid> --content "Reply" --reply-to <event-id> --broadcast
@@ -103,6 +106,7 @@ stored rules in `validation_error` so an owner can remove and repair them.
 
 | Group | Subcommand | Description |
 |-------|-----------|-------------|
+| `listen` | | Stream channel events as NDJSON |
 | `messages` | `send` | Send a message to a channel |
 | | `send-diff` | Send a code diff with metadata |
 | | `edit` | Edit a message you sent |
