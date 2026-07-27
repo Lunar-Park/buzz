@@ -59,8 +59,15 @@ buzz listen \
 Filter semantics are conjunctive inside one relay filter:
 
 - `--channel` only: events in any configured channel;
-- `--mentions-of-me` only: events that p-tag this CLI identity;
+- `--mentions-of-me` only: discover currently visible channels over the
+  authenticated query bridge, then receive events that p-tag this CLI identity;
 - both: events that match one configured channel and p-tag this CLI identity.
+
+Each configured channel uses an independent channel-scoped relay subscription.
+This preserves live delivery across multiple channels without weakening the
+relay's channel/global fan-out boundary. Duplicate channel arguments are
+deduplicated. Mention-only discovery is repeated when the adapter restarts the
+process; restart after membership changes to refresh that channel set.
 
 The v1 envelope prints event records as:
 
@@ -76,4 +83,11 @@ Lifecycle records use the same stdout stream:
 ```
 
 Allowed v1 lifecycle states are `connected`, `eose`, `closed`, and `fatal`.
-Diagnostics and reconnect notices are emitted on stderr as JSON.
+For multi-channel listeners, one `eose` record is emitted after every
+channel-scoped subscription reaches EOSE. Diagnostics and reconnect notices are
+emitted on stderr as JSON.
+
+With automatic reconnect enabled, the CLI reuses the original `--since` value.
+Consumers must deduplicate replayed events by event ID. Resident adapters should
+use `--no-reconnect`, persist their durable cursor, and start a new process with
+the documented overlap.
