@@ -1,8 +1,34 @@
 use crate::client::{normalize_write_response, BuzzClient};
 use crate::error::CliError;
 use crate::validate::validate_hex64;
+use nostr::ToBech32;
 
 // TODO(phase-4): Replace raw nostr::EventBuilder usage in cmd_set_presence with buzz-sdk builder
+
+/// Build identity JSON for `buzz users me`.
+///
+/// Kept pure so the no-relay identity contract stays easy to test.
+pub(crate) fn me_identity_json(pubkey_hex: &str, npub_bech32: &str) -> serde_json::Value {
+    serde_json::json!({
+        "pubkey": pubkey_hex,
+        "npub": npub_bech32,
+    })
+}
+
+/// Print the active CLI identity from the loaded private key.
+///
+/// This performs no relay I/O, so resident adapters can validate their local
+/// Buzz identity before opening subscriptions or sending messages.
+pub async fn cmd_me(client: &BuzzClient, _format: &crate::OutputFormat) -> Result<(), CliError> {
+    let public_key = client.keys().public_key();
+    let pubkey = public_key.to_hex();
+    let npub = public_key
+        .to_bech32()
+        .map_err(|e| CliError::Other(format!("npub encode failed: {e}")))?;
+
+    println!("{}", me_identity_json(&pubkey, &npub));
+    Ok(())
+}
 
 /// Get user profiles (kind:0 metadata events).
 ///
@@ -311,6 +337,7 @@ pub async fn dispatch(
 ) -> Result<(), CliError> {
     use crate::UsersCmd;
     match cmd {
+        UsersCmd::Me => cmd_me(client, format).await,
         UsersCmd::Get { pubkeys, name } => {
             cmd_get_users(client, &pubkeys, name.as_deref(), format).await
         }
@@ -336,8 +363,26 @@ pub async fn dispatch(
 
 #[cfg(test)]
 mod tests {
-    use super::presence_subject;
+    use super::{me_identity_json, presence_subject};
     use serde_json::json;
+
+    #[test]
+    fn me_identity_json_contains_public_identity_only() {
+        let value = me_identity_json(
+            "35c18ae273fccfaf80d629e20e7f8721b90499379addff533054acc2504c12b4",
+            "npub1example",
+        );
+
+        assert_eq!(
+            value,
+            json!({
+                "pubkey": "35c18ae273fccfaf80d629e20e7f8721b90499379addff533054acc2504c12b4",
+                "npub": "npub1example",
+            })
+        );
+        assert!(value.get("private_key").is_none());
+        assert!(value.get("nsec").is_none());
+    }
 
     #[test]
     fn presence_subject_uses_p_tag() {
