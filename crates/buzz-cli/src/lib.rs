@@ -264,6 +264,9 @@ enum Cmd {
     /// Persona pack operations (local, no relay connection needed)
     #[command(subcommand)]
     Pack(PackCmd),
+    /// Nostr identity operations (local, no relay connection needed)
+    #[command(subcommand)]
+    Keys(KeysCmd),
     /// Community moderation — reports queue, bans, timeouts, audit trail
     #[command(subcommand)]
     Moderation(ModerationCmd),
@@ -1705,6 +1708,40 @@ pub enum PackCmd {
     },
 }
 
+/// Local Nostr identity commands.
+///
+/// These run without a relay connection and without a pre-existing
+/// `BUZZ_PRIVATE_KEY`. They exist so that a self-hosted agent can mint its own
+/// identity on the machine it runs on, instead of an operator generating the
+/// secret elsewhere and copying it over.
+#[derive(Subcommand)]
+pub enum KeysCmd {
+    /// Generate a new Nostr keypair for a self-hosted agent identity
+    #[command(
+        after_help = "The secret key is written to --out with mode 0600 and is NOT printed \
+unless --stdout is passed. stdout always carries the public half (pubkey, npub) so the \
+caller can register the identity without ever handling the secret.\n\n\
+Run this on the machine that will use the identity — that is the whole point: the secret \
+is created where it is used and never transported.\n\n\
+Examples:\n  \
+buzz keys generate --out ~/.config/buzz/agent.nsec\n  \
+buzz keys generate --stdout | my-secret-store write buzz/agent\n\n\
+Verify afterwards with:\n  \
+BUZZ_PRIVATE_KEY=$(cat ~/.config/buzz/agent.nsec) buzz users me"
+    )]
+    Generate {
+        /// Path to write the secret key to, created with mode 0600
+        #[arg(long)]
+        out: Option<String>,
+        /// Also print the secret key on stdout (for piping into a secret store)
+        #[arg(long)]
+        stdout: bool,
+        /// Overwrite an existing --out file; any agent using that identity loses it
+        #[arg(long)]
+        force: bool,
+    },
+}
+
 /// Community moderation commands.
 ///
 /// The community (tenant) is selected by the relay host in `--relay` /
@@ -1812,6 +1849,13 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         };
     }
 
+    // Keys commands are local-only AND must run before the BUZZ_PRIVATE_KEY
+    // requirement below: `keys generate` is how that key comes to exist, so
+    // demanding one first would make the command unreachable.
+    if let Cmd::Keys(sub) = cli.command {
+        return commands::keys::dispatch(sub);
+    }
+
     // Auth: private key is required for all relay operations.
     // The keypair IS the identity — no tokens, no other auth.
     let private_key_str = cli.private_key.ok_or_else(|| {
@@ -1878,7 +1922,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Upload(sub) => commands::upload::dispatch(sub, &client).await,
         Cmd::Mem(sub) => commands::mem::dispatch(sub, &client).await,
         Cmd::Moderation(sub) => commands::moderation::dispatch(sub, &client, &cli.format).await,
-        Cmd::Pack(_) => unreachable!("handled above"),
+        Cmd::Pack(_) | Cmd::Keys(_) => unreachable!("handled above"),
     }
 }
 
@@ -1927,6 +1971,7 @@ mod tests {
             "emoji",
             "feed",
             "issues",
+            "keys",
             "listen",
             "media",
             "mem",
@@ -2099,6 +2144,7 @@ mod tests {
         assert_eq!(names(&cmd, "media"), vec!["get"]);
         assert_eq!(names(&cmd, "upload"), vec!["file"]);
         assert_eq!(names(&cmd, "pack"), vec!["inspect", "validate"]);
+        assert_eq!(names(&cmd, "keys"), vec!["generate"]);
         assert_eq!(
             names(&cmd, "moderation"),
             vec![
