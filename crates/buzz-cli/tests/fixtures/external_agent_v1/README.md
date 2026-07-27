@@ -9,6 +9,11 @@ Adapters should normalize each event into the facts recorded in
 `expected_facts.json` and apply policy locally. The fixture data is not a shared
 runtime package and does not carry private keys.
 
+The Rust contract test contains the reference normalization order. Schema,
+channel, and thread validation fail closed before activation; self-authored and
+unauthorized events are ignored before a conversation lane is created. Replay
+duplicates are byte-identical and use the event ID as their idempotency key.
+
 Common identities:
 
 - `agent_pubkey`: `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`
@@ -16,4 +21,3 @@ Common identities:
 - `allowlisted_pubkey`: `cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc`
 - `non_owner_pubkey`: `dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd`
 - `channel_id`: `11111111-1111-1111-1111-111111111111`
-
