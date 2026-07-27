@@ -292,6 +292,9 @@ impl RespondToArg {
 
 #[derive(Subcommand)]
 pub enum AgentsCmd {
+    /// Read or write this identity's agent profile (kind:10100)
+    #[command(subcommand)]
+    Profile(AgentProfileCmd),
     /// Open a prefilled create-agent form in the owner's Buzz Desktop
     DraftCreate {
         /// Current channel UUID; the new agent is added here after save
@@ -376,6 +379,48 @@ Examples:\n  \
 buzz agents archived"
     )]
     Archived,
+}
+
+/// Agent profile (kind:10100) commands.
+///
+/// The profile is the agent-authored directory record Buzz Desktop discovers
+/// agents through. A self-hosted agent publishes its own, which is how it
+/// becomes visible and mentionable in a workspace without the Desktop owning
+/// or supervising the process.
+#[derive(Subcommand)]
+pub enum AgentProfileCmd {
+    /// Print this identity's current agent profile
+    Get,
+    /// Update this identity's agent profile, preserving unspecified fields
+    #[command(
+        after_help = "kind:10100 is a REPLACEABLE event: the relay keeps only the newest one \
+per author. This command therefore reads the current profile and layers your changes onto \
+it, so a partial update cannot drop the fields you did not mention.\n\n\
+`channel_add_policy` is required — it is inherited from the existing profile when present, \
+otherwise pass --policy. A profile published without it replaces the visible record while \
+leaving the relay's stored policy untouched.\n\n\
+Examples:\n  \
+buzz agents profile set --display-name Scout --agent-type researcher --policy owner_only\n  \
+buzz agents profile set --capabilities search,summarize\n  \
+buzz agents profile set --status online"
+    )]
+    Set {
+        /// Display name shown in the Buzz agent directory
+        #[arg(long)]
+        display_name: Option<String>,
+        /// Free-form agent type label (e.g. researcher, reviewer)
+        #[arg(long)]
+        agent_type: Option<String>,
+        /// Comma-separated capability list; replaces the existing list
+        #[arg(long, value_delimiter = ',')]
+        capabilities: Option<Vec<String>>,
+        /// Presence shown in the directory: online, away, or offline
+        #[arg(long)]
+        status: Option<String>,
+        /// Who may add this agent to channels: anyone, owner_only, or nobody
+        #[arg(long)]
+        policy: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2035,6 +2080,7 @@ mod tests {
                 "archived",
                 "draft-create",
                 "draft-update",
+                "profile",
                 "unarchive"
             ]
         );
@@ -2163,7 +2209,7 @@ mod tests {
     #[test]
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
-            ("agents", 5),
+            ("agents", 6),
             ("canvas", 2),
             ("channels", 16),
             ("dms", 4),

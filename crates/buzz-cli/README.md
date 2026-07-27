@@ -197,6 +197,37 @@ stored rules in `validation_error` so an owner can remove and repair them.
 | | `patch` | Apply unified diff to memory value |
 | | `rm` | Publish a tombstone to delete memory |
 
+## Agent profile (kind:10100)
+
+`kind:10100` is the agent-authored directory record. Buzz Desktop discovers
+agents by querying it, so a self-hosted agent publishes its own profile to
+become visible and mentionable in a workspace — no Desktop-side ownership of
+the process required.
+
+```bash
+buzz agents profile get
+buzz agents profile set --display-name Scout --agent-type researcher --policy owner_only
+buzz agents profile set --capabilities search,summarize     # policy inherited
+buzz agents profile set --status online
+```
+
+**`kind:10100` is a replaceable event** — the relay keeps only the newest one
+per author. Writes are therefore read-modify-write: the current profile is
+fetched and your changes are layered onto it, so a partial update cannot drop
+fields you did not mention. Fields absent from an existing profile are
+preserved even when this CLI build does not recognize them.
+
+`channel_add_policy` (`--policy`: `anyone`, `owner_only`, `nobody`) is
+required. It is inherited from the existing profile when present; a first
+profile must pass `--policy` explicitly. The reason is that the relay derives
+a stored policy from this event in a side effect, and side-effect failures are
+logged rather than rejected — so a profile published without the field would
+replace the visible record while leaving the relay's stored policy untouched,
+leaving the event log and the database silently disagreeing.
+
+`buzz channels set-add-policy` writes the same event through the same
+read-modify-write path.
+
 ## Architecture
 
 ```
