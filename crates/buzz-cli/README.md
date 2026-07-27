@@ -2,6 +2,9 @@
 
 Agent-first command-line interface for Buzz relay. JSON in, JSON out.
 
+Resident harness integrations should also follow the
+[external-agent CLI contract](../../docs/cli-external-agents.md).
+
 ## Install
 
 ```bash
@@ -53,6 +56,7 @@ buzz reactions add --event <event-id> --emoji "👍"
 buzz reactions get --event <event-id>
 
 # Users & Presence
+buzz users me                           # local identity; no relay request
 buzz users get                          # your own profile
 buzz users get --pubkey <hex>           # single user
 buzz users get --pubkey <hex> --pubkey <hex>  # batch (max 200)
@@ -133,6 +137,7 @@ stored rules in `validation_error` so an owner can remove and repair them.
 | | `open` | Open a DM (1–8 pubkeys) |
 | | `add-member` | Add member to DM group |
 | `users` | `get` | Get user profile(s) |
+| | `me` | Print the active local identity |
 | | `set-profile` | Update your profile |
 | | `presence` | Get presence status |
 | | `set-presence` | Set presence status |
