@@ -800,6 +800,8 @@ pub enum DmsCmd {
 
 #[derive(Subcommand)]
 pub enum UsersCmd {
+    /// Print the active CLI identity without contacting the relay
+    Me,
     /// Look up user profiles by pubkey or name
     Get {
         /// User pubkey(s) to look up (64-char hex). Omit for your own profile
@@ -1963,6 +1965,7 @@ mod tests {
             names(&cmd, "users"),
             vec![
                 "get",
+                "me",
                 "presence",
                 "set-presence",
                 "set-profile",
@@ -2054,7 +2057,7 @@ mod tests {
             ("repos", 4),
             ("social", 7),
             ("upload", 1),
-            ("users", 5),
+            ("users", 6),
             ("workflows", 8),
         ];
 
