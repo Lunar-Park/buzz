@@ -93,7 +93,10 @@ const overrides = new Map([
   // build_managed_agent_summary into callers, dangling-harness summaries render
   // the deleted id, and spawn errors surface as sentences (tests included).
   // +1: merge of the two deltas above (actual post-merge count).
-  ["src-tauri/src/commands/agents.rs", 1418],
+  // +4: key custody — `key_custody: KeyCustody::Local` on the create path, with
+  // the comment recording that Buzz minted the key here and that
+  // `connect_remote_agent` is the only path producing a non-local record.
+  ["src-tauri/src/commands/agents.rs", 1422],
   // agent-lifecycle-fixes: cascade-delete in delete_persona restructured into
   // 3-phase (stage/stop/commit) + commit_cascade_agents injectable helper for
   // retry-safety. Load-bearing reviewer-required change; queued to split.
@@ -134,8 +137,23 @@ const overrides = new Map([
   // harness-log reader fix: the inline test module moved to storage_tests.rs
   // (`#[path]`-included), ratcheting 1383 -> 826. Both halves are now under the
   // 1000 default; entries kept as ratchets.
-  ["src-tauri/src/managed_agents/storage.rs", 826],
-  ["src-tauri/src/managed_agents/storage_tests.rs", 701],
+  // +53 (826 -> 879): key custody — the three-way store partition.
+  // `load_managed_agents` now filters connected self-hosted agents out at the
+  // source (the reader behind spawn, deploy, auto-start restore, kind:30177
+  // reconcile, profile republish, and delete-with-tombstone),
+  // `save_managed_agents` re-reads and preserves that third, `write_agent_store`
+  // takes it as a parameter, and `spawn_key_refusal` gained a custody arm that
+  // states the fact instead of blaming the keyring. The load/save pair for
+  // connected records was split into the child module `storage/connected.rs`
+  // rather than added here. Still under the 1000 default.
+  ["src-tauri/src/managed_agents/storage.rs", 879],
+  // +20 (701 -> 721): the keyring-chokepoint custody test
+  // (`remote_custody_records_never_get_a_key_written_back`) lives here rather
+  // than in `storage/connected.rs` because it needs `FakeKeyStore`, and moving
+  // it would have meant widening that fixture's visibility to satisfy a line
+  // counter. `record_with_key`/`record_with_pubkey_and_key` are `pub(super)` so
+  // the `storage/connected.rs` tests can share them.
+  ["src-tauri/src/managed_agents/storage_tests.rs", 721],
   // config-bridge setup-payload env-boundary fix adds readiness wiring in
   // spawn_agent_child; load-bearing security fix, queued to split.
   ["src-tauri/src/managed_agents/config_bridge/reader.rs", 1016],
@@ -346,7 +364,13 @@ const overrides = new Map([
   // entries.push block collapsed into the helper.
   // +6: legacy Goose Windows install dir (%USERPROFILE%\goose) probed in
   // common_binary_paths so pre-#2680 standalone installs are discoverable.
-  ["src-tauri/src/managed_agents/discovery.rs", 1841],
+  // +1: remote harness discovery — `HarnessProbeTarget` and
+  // `harness_probe_targets()` project the probe set from KNOWN_ACP_RUNTIMES and
+  // PRESET_HARNESSES. The 61-line body was split into the child module
+  // `discovery/probe_targets.rs` rather than added here; a child sees this
+  // module's private tables, so nothing had to be made more visible. This
+  // residual line is the `mod` declaration plus its re-export.
+  ["src-tauri/src/managed_agents/discovery.rs", 1843],
   // BYOH — save_custom_harness_to_dir (backup-swap atomic write) + save_and_warm /
   // delete_and_warm (persist-mutex serialization for concurrent-safe registry
   // refresh, B-6). Also: id/collision/load/registry tests (from the file base) +
@@ -391,7 +415,9 @@ const overrides = new Map([
   // Available both-present AND adapter-present/CLI-absent — the selectability
   // regression guard), bound to an injectable resolver so the tests stay
   // PATH-independent.
-  ["src-tauri/src/managed_agents/discovery/tests.rs", 1871],
+  // +1: key custody — `key_custody` is a required field on
+  // `ManagedAgentRecord`, so every struct-literal fixture names it.
+  ["src-tauri/src/managed_agents/discovery/tests.rs", 1872],
   // identity-import-keyring: the identity resolution state machine's behavioral
   // matrix (46 tests over FakeIdentityStore — probe × marker × file cells,
   // adoption / read-back-corruption / marker-failure arms, recovery-mode

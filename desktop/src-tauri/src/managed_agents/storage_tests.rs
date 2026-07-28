@@ -120,11 +120,11 @@ impl KeyStore for FakeKeyStore {
     }
 }
 
-fn record_with_key(nsec: &str) -> ManagedAgentRecord {
+pub(super) fn record_with_key(nsec: &str) -> ManagedAgentRecord {
     record_with_pubkey_and_key("agent-pubkey", nsec)
 }
 
-fn record_with_pubkey_and_key(pubkey: &str, nsec: &str) -> ManagedAgentRecord {
+pub(super) fn record_with_pubkey_and_key(pubkey: &str, nsec: &str) -> ManagedAgentRecord {
     serde_json::from_str(&format!(
         r#"{{
             "pubkey": "{pubkey}",
@@ -249,6 +249,26 @@ fn spawn_allowed_when_private_key_present() {
     // A record carrying a key must not be blocked by the refusal guard.
     let record = record_with_key("nsec1realkey");
     assert!(super::spawn_key_refusal(&record).is_none());
+}
+
+#[test]
+fn remote_custody_records_never_get_a_key_written_back() {
+    // `persist_agent_keys` is the save-time keyring chokepoint. A connected
+    // record reaching it would create a keyring entry Buzz would later
+    // hydrate as though it owned the identity — so `save_managed_agents`
+    // drops non-local records before this runs, and an empty key is
+    // `KeyMigration::Nothing` regardless.
+    let store = FakeKeyStore::reachable();
+    let mut record = record_with_key("");
+    record.key_custody = crate::managed_agents::KeyCustody::Remote {
+        host: "lunar02".to_string(),
+    };
+    let mut records = vec![record];
+
+    persist_agent_keys_with(&store, &mut records);
+
+    assert_eq!(*store.write_count.borrow(), 0);
+    assert!(records[0].private_key_nsec.is_empty());
 }
 
 #[test]

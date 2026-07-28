@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+
+use super::key_custody::KeyCustody;
 use std::{collections::BTreeMap, path::PathBuf, process::Child};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -112,6 +114,9 @@ impl AgentDefinition {
             backend: BackendKind::default(),
             backend_agent_id: None,
             provider_binary_path: None,
+            // A definition has no key yet; when one is minted on first start
+            // it is minted here, by Buzz.
+            key_custody: KeyCustody::Local,
             team_id: None,
             persona_team_dir: None,
             persona_name_in_team: None,
@@ -302,6 +307,18 @@ pub struct ManagedAgentRecord {
     pub backend_agent_id: Option<String>,
     #[serde(default)]
     pub provider_binary_path: Option<String>,
+    /// Where this agent's signing key lives. `Local` for every agent Buzz
+    /// minted; `Remote` only for a connected self-hosted agent.
+    ///
+    /// `skip_serializing_if` keeps the key out of JSON in the (overwhelmingly
+    /// common) local case, so adding this field does not rewrite every
+    /// existing agent's stored record.
+    ///
+    /// A `Remote` record is filtered out of [`super::load_managed_agents`], so
+    /// it is structurally invisible to every spawn, deploy, and publish path
+    /// rather than relying on each of them to check this field.
+    #[serde(default, skip_serializing_if = "KeyCustody::is_local")]
+    pub key_custody: KeyCustody,
     /// Installed team directory path (absolute). Set when agent was created from a team persona.
     #[serde(
         default,

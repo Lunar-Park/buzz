@@ -23,13 +23,17 @@ mod process_lifecycle;
 pub(crate) mod readiness;
 pub(crate) mod reconcile;
 mod relay_mesh;
+pub mod remote_probe;
 mod repos;
+
+mod key_custody;
 mod restore;
 pub mod retention;
 mod runtime;
 mod runtime_commands;
 mod runtime_types;
 pub(crate) mod spawn_hash;
+pub mod ssh_config;
 pub(crate) mod storage;
 pub(crate) mod team_events;
 mod team_repair;
@@ -55,6 +59,7 @@ pub(crate) use global_config::{
     load_global_agent_config, resolve_effective_model_provider, save_global_agent_config,
     validate_global_config, GlobalAgentConfig,
 };
+pub use key_custody::*;
 pub(crate) use managed_node_paths::*;
 pub use nest::*;
 pub use personas::*;

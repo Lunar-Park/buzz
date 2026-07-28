@@ -886,6 +886,10 @@ pub async fn create_managed_agent(
             backend: input.backend.clone(),
             backend_agent_id: None,
             provider_binary_path,
+            // Buzz minted the key immediately above, so it holds it. Not
+            // caller-controllable: `connect_remote_agent` is the only path
+            // that produces a non-local custody record, and it never mints.
+            key_custody: crate::managed_agents::KeyCustody::Local,
             persona_team_dir: None,
             persona_name_in_team: None,
             env_vars: input.env_vars.clone(),

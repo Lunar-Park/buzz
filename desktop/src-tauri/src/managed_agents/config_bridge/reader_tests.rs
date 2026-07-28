@@ -88,6 +88,7 @@ fn test_record() -> ManagedAgentRecord {
         backend: crate::managed_agents::types::BackendKind::Local,
         backend_agent_id: None,
         provider_binary_path: None,
+        key_custody: crate::managed_agents::KeyCustody::Local,
         team_id: None,
         persona_team_dir: None,
         persona_name_in_team: None,

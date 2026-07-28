@@ -10,6 +10,8 @@ use crate::managed_agents::{
     HarnessSource,
 };
 
+mod probe_targets;
+pub use probe_targets::{harness_probe_targets, HarnessProbeTarget};
 mod runtime_metadata;
 
 pub(crate) use runtime_metadata::KnownAcpRuntime;
