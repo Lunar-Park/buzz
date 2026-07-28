@@ -91,3 +91,31 @@ export type HostProbeResult = {
 
 /** Host id the backend uses for the local machine. */
 export const LOCALHOST_HOST_ID = "__localhost__";
+
+/**
+ * A self-hosted agent Buzz talks to but does not own: it runs on a machine the
+ * user owns, supervises itself, and holds its own signing key.
+ *
+ * Deliberately **not** a `ManagedAgent`. That type carries `status`, `pid`,
+ * `logPath`, `needsRestart`, and `startOnAppLaunch` — each one a claim about a
+ * process Buzz supervises. A connected agent has none of those, and the narrow
+ * shape is what makes "no start/stop button" a property of the type rather
+ * than a rule a component has to remember. Connected agents are not part of
+ * `listManagedAgents()` at all: they are a separate record type in a separate
+ * store, so they cannot reach a surface that renders lifecycle controls.
+ */
+export type ConnectedAgent = {
+  /** The agent's own pubkey, lowercase hex. Buzz holds only the public half. */
+  pubkey: string;
+  /** Buzz-local label. The agent's own kind:10100 profile is what the relay sees. */
+  name: string;
+  /** `~/.ssh/config` alias of the machine the agent and its key live on. */
+  host: string;
+  /**
+   * Harness id observed on the host at connect time (e.g. `"claude"`). A
+   * record of what was there — nothing in Buzz executes it.
+   */
+  harness: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
