@@ -2,6 +2,9 @@
 
 Agent-first command-line interface for Buzz relay. JSON in, JSON out.
 
+Resident harness integrations should also follow the
+[external-agent CLI contract](../../docs/cli-external-agents.md).
+
 ## Install
 
 ```bash
@@ -48,6 +51,9 @@ All output is JSON on stdout. Errors are JSON on stderr. Exit codes: 0=ok, 1=use
 # Set relay URL (defaults to http://localhost:3000)
 export BUZZ_RELAY_URL="https://relay.example.com"
 
+# Realtime external-agent ingress
+buzz listen --channel <uuid> --mentions-of-me --envelope v1 --no-reconnect
+
 # Messages
 buzz messages send --channel <uuid> --content "Hello"
 buzz messages send --channel <uuid> --content "Reply" --reply-to <event-id> --broadcast
@@ -73,6 +79,7 @@ buzz reactions add --event <event-id> --emoji "👍"
 buzz reactions get --event <event-id>
 
 # Users & Presence
+buzz users me                           # local identity; no relay request
 buzz users get                          # your own profile
 buzz users get --pubkey <hex>           # single user
 buzz users get --pubkey <hex> --pubkey <hex>  # batch (max 200)
@@ -121,6 +128,7 @@ stored rules in `validation_error` so an owner can remove and repair them.
 
 | Group | Subcommand | Description |
 |-------|-----------|-------------|
+| `listen` | | Stream channel events as NDJSON |
 | `messages` | `send` | Send a message to a channel |
 | | `send-diff` | Send a code diff with metadata |
 | | `edit` | Edit a message you sent |
@@ -152,6 +160,7 @@ stored rules in `validation_error` so an owner can remove and repair them.
 | | `open` | Open a DM (1–8 pubkeys) |
 | | `add-member` | Add member to DM group |
 | `users` | `get` | Get user profile(s) |
+| | `me` | Print the active local identity |
 | | `set-profile` | Update your profile |
 | | `presence` | Get presence status |
 | | `set-presence` | Set presence status |
