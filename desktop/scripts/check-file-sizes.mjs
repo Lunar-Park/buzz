@@ -333,7 +333,13 @@ const overrides = new Map([
   // absent, so AdapterMissing replaces the misleading NotInstalled. Includes
   // the deliberate-divergence doc comments; net after the inline preset
   // entries.push block collapsed into the helper.
-  ["src-tauri/src/managed_agents/discovery.rs", 1835],
+  // +2: remote harness discovery — `HarnessProbeTarget` and
+  // `harness_probe_targets()` project the probe set from KNOWN_ACP_RUNTIMES and
+  // PRESET_HARNESSES. The 61-line body was split into the child module
+  // `discovery/probe_targets.rs` rather than added here; a child sees this
+  // module's private tables, so nothing had to be made more visible. These two
+  // residual lines are the `mod` declaration and its re-export.
+  ["src-tauri/src/managed_agents/discovery.rs", 1837],
   // BYOH — save_custom_harness_to_dir (backup-swap atomic write) + save_and_warm /
   // delete_and_warm (persist-mutex serialization for concurrent-safe registry
   // refresh, B-6). Also: id/collision/load/registry tests (from the file base) +

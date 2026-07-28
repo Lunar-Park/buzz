@@ -778,8 +778,9 @@ mod tests {
 
     #[test]
     fn version_containing_colons_survives() {
-        let raw =
-            format!("{PROBE_START}\nBIN:hermes-acp:/usr/bin/hermes-acp:0.18.2 (build:2026)\n{PROBE_END}\n");
+        let raw = format!(
+            "{PROBE_START}\nBIN:hermes-acp:/usr/bin/hermes-acp:0.18.2 (build:2026)\n{PROBE_END}\n"
+        );
         let facts = parse_probe_output(&raw);
         assert_eq!(
             facts.binaries.get("hermes-acp").unwrap().1.as_deref(),
@@ -861,9 +862,10 @@ mod tests {
         facts
             .binaries
             .insert("claude".into(), ("/usr/bin/claude".into(), None));
-        facts
-            .binaries
-            .insert("claude-code-acp".into(), ("/usr/bin/claude-code-acp".into(), None));
+        facts.binaries.insert(
+            "claude-code-acp".into(),
+            ("/usr/bin/claude-code-acp".into(), None),
+        );
         facts.binaries.insert(
             "claude-agent-acp".into(),
             ("/usr/bin/claude-agent-acp".into(), None),
@@ -877,16 +879,14 @@ mod tests {
 
     #[test]
     fn classifies_password_wall() {
-        let kind =
-            classify_ssh_failure("miles@lunar02: Permission denied (publickey,password).");
+        let kind = classify_ssh_failure("miles@lunar02: Permission denied (publickey,password).");
         assert_eq!(kind, Some(HostProbeErrorKind::PasswordRequired));
     }
 
     #[test]
     fn classifies_keyboard_interactive_as_password_wall() {
-        let kind = classify_ssh_failure(
-            "user@host: Permission denied (publickey,keyboard-interactive).",
-        );
+        let kind =
+            classify_ssh_failure("user@host: Permission denied (publickey,keyboard-interactive).");
         assert_eq!(kind, Some(HostProbeErrorKind::PasswordRequired));
     }
 
@@ -993,5 +993,3 @@ mod tests {
         );
     }
 }
-
-

@@ -13,9 +13,7 @@ import type {
   HomeFeedResponse,
   ManagedAgent,
   ManagedAgentBackend,
-  HostProbeResult,
   RelayAgent,
-  SshHost,
   RelayMember,
   RelayMemberRole,
   PresenceLookup,
@@ -39,6 +37,7 @@ import type {
   GitBashPrerequisite,
   RuntimeConfigSurface,
 } from "@/shared/api/types";
+import type { HostProbeResult, SshHost } from "@/shared/api/remoteAgentTypes";
 
 export * from "@/shared/api/tauriChannels";
 
