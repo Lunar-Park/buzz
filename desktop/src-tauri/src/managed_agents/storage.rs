@@ -155,13 +155,31 @@ fn migrate_inline_key(store: &impl KeyStore, record: &ManagedAgentRecord) -> Key
     }
 }
 
-/// Refuse to spawn an agent whose private key is unavailable. Returns
-/// `Some(error)` when `private_key_nsec` is empty — after [`hydrate_keys`] an
-/// empty key means a keyring outage or a genuinely absent secret, NOT a
-/// deliberately keyless agent. Spawning anyway would inject an empty
-/// `BUZZ_PRIVATE_KEY`/`NOSTR_PRIVATE_KEY`, launching with no identity. Callers
-/// (the spawn path) must fail closed (Wes storage.rs:158).
+/// Refuse to spawn an agent whose private key Buzz cannot use. Returns
+/// `Some(error)` for two distinct situations that must not share a message.
+///
+/// Under [`KeyCustody::Remote`] the absent key is the *design*: the secret was
+/// minted on another machine and Buzz has never held it. The refusal is a
+/// statement of fact, not a fault — telling the user their keyring is
+/// unreachable would send them to fix a component that is working correctly.
+/// A connected record is already filtered out of [`load_managed_agents`], so
+/// no ordinary path reaches this arm; it exists so that a path which obtains a
+/// record some other way (snapshot import, a future reader over
+/// [`load_agent_store`]) still fails closed with the truth.
+///
+/// Otherwise an empty `private_key_nsec` means a keyring outage or a genuinely
+/// absent secret — after [`hydrate_keys`], never a deliberately keyless agent.
+/// Spawning anyway would inject an empty `BUZZ_PRIVATE_KEY`/`NOSTR_PRIVATE_KEY`
+/// and launch with no identity, so the spawn path must fail closed
+/// (Wes storage.rs:158).
 pub(crate) fn spawn_key_refusal(record: &ManagedAgentRecord) -> Option<String> {
+    if let Some(host) = record.key_custody.remote_host() {
+        return Some(format!(
+            "agent {} is self-hosted — its identity lives on {host} and Buzz has never held \
+             its key. Buzz does not start, stop, or restart this agent; start it on {host}.",
+            record.pubkey
+        ));
+    }
     record.private_key_nsec.is_empty().then(|| {
         format!(
             "agent {} has no private key available — the OS keyring may be unreachable. \
@@ -171,9 +189,16 @@ pub(crate) fn spawn_key_refusal(record: &ManagedAgentRecord) -> Option<String> {
     })
 }
 
-/// Read the raw unified store — keyed instances AND key-less definitions —
-/// with fail-loud parse handling. Internal seam; public readers filter.
-fn load_agent_store(app: &AppHandle) -> Result<Vec<ManagedAgentRecord>, String> {
+/// Read the raw unified store — keyed instances, key-less definitions, AND
+/// connected self-hosted agents — with fail-loud parse handling.
+///
+/// The unfiltered seam. Prefer one of the three filtered readers below; this
+/// one exists for callers that legitimately need the whole file, such as
+/// validating that a name or pubkey is unused across every kind of record. A
+/// caller that means "the agents Buzz can act on" wants
+/// [`load_managed_agents`] — reaching for this instead reintroduces connected
+/// agents into paths that must not see them.
+pub(crate) fn load_agent_store(app: &AppHandle) -> Result<Vec<ManagedAgentRecord>, String> {
     let path = managed_agents_store_path(app)?;
     if !path.exists() {
         return Ok(Vec::new());
@@ -193,12 +218,27 @@ fn load_agent_store(app: &AppHandle) -> Result<Vec<ManagedAgentRecord>, String> 
     })
 }
 
-/// Load the keyed agent *instances*. Key-less definitions (former personas,
-/// folded into the same store) are filtered out so every pre-fold call site
-/// keeps seeing exactly the records it always did.
+/// Load the keyed agent *instances* Buzz owns. Two other kinds of record live
+/// in the same file and are filtered out here:
+///
+/// - key-less definitions (former personas, folded into this store), so every
+///   pre-fold call site keeps seeing exactly the records it always did;
+/// - connected self-hosted agents ([`KeyCustody::Remote`]), whose keys are on
+///   another machine.
+///
+/// Excluding connected agents *here* rather than guarding each consumer is the
+/// load-bearing decision: this is the reader that feeds spawn, deploy,
+/// auto-start restore, owner-signed kind:30177 reconcile, profile republish,
+/// and delete-with-tombstone. A per-call-site check would be an invariant every
+/// future contributor has to know about; a filter at the source means code that
+/// has never heard of key custody cannot act on an agent Buzz does not own.
+mod connected;
+pub(crate) use connected::{load_connected_agents, save_connected_agents};
+use connected::{preserved_halves, store_half, StoreHalf};
+
 pub fn load_managed_agents(app: &AppHandle) -> Result<Vec<ManagedAgentRecord>, String> {
     let mut records = load_agent_store(app)?;
-    records.retain(|record| !record.pubkey.is_empty());
+    records.retain(|record| store_half(record) == StoreHalf::Owned);
     hydrate_keys(&mut records);
     Ok(records)
 }
@@ -208,7 +248,7 @@ pub fn load_managed_agents(app: &AppHandle) -> Result<Vec<ManagedAgentRecord>, S
 /// the legacy shape via `to_definition_view`.
 pub(crate) fn load_agent_definitions(app: &AppHandle) -> Result<Vec<ManagedAgentRecord>, String> {
     let mut records = load_agent_store(app)?;
-    records.retain(|record| record.pubkey.is_empty());
+    records.retain(|record| store_half(record) == StoreHalf::Definition);
     Ok(records)
 }
 
@@ -292,17 +332,25 @@ fn hydrate_keys_with(store: &impl KeyStore, records: &mut [ManagedAgentRecord]) 
     }
 }
 
-/// Save the keyed agent *instances*, preserving the key-less definitions that
-/// share the unified store: callers pass exactly the records they loaded via
-/// [`load_managed_agents`], and this re-reads the definition half from disk
-/// before the wholesale rewrite so a definition is never dropped by an
-/// instance-side save (and vice versa via [`save_agent_definitions`]).
+/// Save the keyed agent *instances*, preserving the two other kinds of record
+/// that share the unified store: callers pass exactly the records they loaded
+/// via [`load_managed_agents`], and this re-reads the key-less definitions and
+/// the connected self-hosted agents from disk before the wholesale rewrite, so
+/// neither is dropped by an instance-side save (and vice versa via
+/// [`save_agent_definitions`] / [`save_connected_agents`]).
+///
+/// The connected re-read is not optional bookkeeping: because
+/// [`load_managed_agents`] now filters connected records out, every one of the
+/// dozens of existing `load … mutate … save_managed_agents` call sites would
+/// otherwise silently erase them on the next unrelated save.
 pub fn save_managed_agents(app: &AppHandle, records: &[ManagedAgentRecord]) -> Result<(), String> {
-    let definitions = load_agent_definitions(app).unwrap_or_default();
+    let (definitions, connected) = preserved_halves(&load_agent_store(app).unwrap_or_default());
     let mut sorted = records.to_vec();
-    // A caller-supplied key-less record would collide with the definition
-    // half re-read below; instances always carry a pubkey.
-    sorted.retain(|record| !record.pubkey.is_empty());
+    // A caller-supplied key-less or connected record would duplicate the half
+    // re-read just above; instances always carry a pubkey and local custody. A
+    // connected record must also never reach the key-persisting path below,
+    // which exists for keys Buzz actually holds.
+    sorted.retain(|record| store_half(record) == StoreHalf::Owned);
     sorted.sort_by(|left, right| {
         left.name
             .to_lowercase()
@@ -315,7 +363,7 @@ pub fn save_managed_agents(app: &AppHandle, records: &[ManagedAgentRecord]) -> R
     // keyring is unreachable, the key stays inline.
     persist_agent_keys(&mut sorted);
 
-    write_agent_store(app, definitions, sorted)
+    write_agent_store(app, definitions, connected, sorted)
 }
 
 /// Save the key-less agent *definitions*, preserving the keyed instances —
@@ -325,22 +373,27 @@ pub(crate) fn save_agent_definitions(
     definitions: &[ManagedAgentRecord],
 ) -> Result<(), String> {
     let mut instances = load_agent_store(app)?;
-    instances.retain(|record| !record.pubkey.is_empty());
+    // Both keyed halves (owned instances and connected agents) pass through
+    // untouched — this save only replaces the key-less half.
+    instances.retain(|record| store_half(record) != StoreHalf::Definition);
     let mut definitions = definitions.to_vec();
-    definitions.retain(|record| record.pubkey.is_empty());
-    write_agent_store(app, definitions, instances)
+    definitions.retain(|record| store_half(record) == StoreHalf::Definition);
+    write_agent_store(app, definitions, Vec::new(), instances)
 }
 
-/// Serialize definitions + instances into the single unified store file.
-/// Definitions sort first (by slug) for stable diffs; instances keep the
-/// name/pubkey order their save path established.
+/// Serialize definitions + connected agents + owned instances into the single
+/// unified store file. Definitions sort first (by slug) for stable diffs;
+/// connected agents follow; instances keep the name/pubkey order their save
+/// path established.
 fn write_agent_store(
     app: &AppHandle,
     mut definitions: Vec<ManagedAgentRecord>,
+    connected: Vec<ManagedAgentRecord>,
     instances: Vec<ManagedAgentRecord>,
 ) -> Result<(), String> {
     definitions.sort_by(|left, right| left.slug.cmp(&right.slug));
     let mut all = definitions;
+    all.extend(connected);
     all.extend(instances);
 
     let path = managed_agents_store_path(app)?;
@@ -902,11 +955,11 @@ mod tests {
         }
     }
 
-    fn record_with_key(nsec: &str) -> ManagedAgentRecord {
+    pub(super) fn record_with_key(nsec: &str) -> ManagedAgentRecord {
         record_with_pubkey_and_key("agent-pubkey", nsec)
     }
 
-    fn record_with_pubkey_and_key(pubkey: &str, nsec: &str) -> ManagedAgentRecord {
+    pub(super) fn record_with_pubkey_and_key(pubkey: &str, nsec: &str) -> ManagedAgentRecord {
         serde_json::from_str(&format!(
             r#"{{
                 "pubkey": "{pubkey}",
@@ -1031,6 +1084,26 @@ mod tests {
         // A record carrying a key must not be blocked by the refusal guard.
         let record = record_with_key("nsec1realkey");
         assert!(super::spawn_key_refusal(&record).is_none());
+    }
+
+    #[test]
+    fn remote_custody_records_never_get_a_key_written_back() {
+        // `persist_agent_keys` is the save-time keyring chokepoint. A connected
+        // record reaching it would create a keyring entry Buzz would later
+        // hydrate as though it owned the identity — so `save_managed_agents`
+        // drops non-local records before this runs, and an empty key is
+        // `KeyMigration::Nothing` regardless.
+        let store = FakeKeyStore::reachable();
+        let mut record = record_with_key("");
+        record.key_custody = crate::managed_agents::KeyCustody::Remote {
+            host: "lunar02".to_string(),
+        };
+        let mut records = vec![record];
+
+        persist_agent_keys_with(&store, &mut records);
+
+        assert_eq!(*store.write_count.borrow(), 0);
+        assert!(records[0].private_key_nsec.is_empty());
     }
 
     #[test]

@@ -94,6 +94,21 @@ pub(crate) fn reconcile_agents_in_dir(base_dir: &Path, keys: &nostr::Keys) -> Re
             continue;
         }
 
+        // A connected self-hosted agent must not be published as kind:30177.
+        // That event is the owner asserting "I manage this agent", and it is
+        // what `delete_managed_agent` tombstones — so emitting it here would
+        // let Buzz claim, and later revoke, the directory entry for an agent
+        // it does not own and cannot restart. A self-hosted agent's directory
+        // presence is its own replaceable kind:10100, published by the agent
+        // with the key Buzz has never held.
+        //
+        // This reader deliberately parses the store file directly (no keyring
+        // hydration), so it does not inherit `load_managed_agents`'s custody
+        // filter and has to apply it itself.
+        if !record.key_custody.is_local() {
+            continue;
+        }
+
         let existing =
             get_retained_event(&conn, KIND_MANAGED_AGENT, &owner_pubkey, &record.pubkey)?;
 

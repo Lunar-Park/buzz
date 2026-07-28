@@ -89,7 +89,10 @@ const overrides = new Map([
   // build_managed_agent_summary into callers, dangling-harness summaries render
   // the deleted id, and spawn errors surface as sentences (tests included).
   // +1: merge of the two deltas above (actual post-merge count).
-  ["src-tauri/src/commands/agents.rs", 1418],
+  // +4: key custody — `key_custody: KeyCustody::Local` on the create path, with
+  // the comment recording that Buzz minted the key here and that
+  // `connect_remote_agent` is the only path producing a non-local record.
+  ["src-tauri/src/commands/agents.rs", 1422],
   // agent-lifecycle-fixes: cascade-delete in delete_persona restructured into
   // 3-phase (stage/stop/commit) + commit_cascade_agents injectable helper for
   // retry-safety. Load-bearing reviewer-required change; queued to split.
@@ -127,7 +130,18 @@ const overrides = new Map([
   // receipts (write_agent_runtime_receipt atomic JSON + remove/read_all
   // helpers) replace the pubkey-keyed PID file, plus the hashed pair-scoped
   // runtime log path. Load-bearing crash-recovery surface; queued to split.
-  ["src-tauri/src/managed_agents/storage.rs", 1383],
+  // +73: key custody — the three-way store partition. `load_managed_agents`
+  // now filters connected self-hosted agents out at the source (the reader
+  // behind spawn, deploy, auto-start restore, kind:30177 reconcile, profile
+  // republish, and delete-with-tombstone), `save_managed_agents` re-reads and
+  // preserves that third, `write_agent_store` takes it as a parameter, and
+  // `spawn_key_refusal` gained a custody arm that states the fact instead of
+  // blaming the keyring. The load/save pair for connected records was split
+  // into the child module `storage/connected.rs` rather than added here; the
+  // keyring-chokepoint test stayed because it needs `FakeKeyStore`, and moving
+  // it would have meant widening that fixture's visibility to satisfy a line
+  // counter.
+  ["src-tauri/src/managed_agents/storage.rs", 1457],
   // config-bridge setup-payload env-boundary fix adds readiness wiring in
   // spawn_agent_child; load-bearing security fix, queued to split.
   ["src-tauri/src/managed_agents/config_bridge/reader.rs", 1016],
@@ -384,7 +398,9 @@ const overrides = new Map([
   // Available both-present AND adapter-present/CLI-absent — the selectability
   // regression guard), bound to an injectable resolver so the tests stay
   // PATH-independent.
-  ["src-tauri/src/managed_agents/discovery/tests.rs", 1871],
+  // +1: key custody — `key_custody` is a required field on
+  // `ManagedAgentRecord`, so every struct-literal fixture names it.
+  ["src-tauri/src/managed_agents/discovery/tests.rs", 1872],
   // identity-import-keyring: the identity resolution state machine's behavioral
   // matrix (46 tests over FakeIdentityStore — probe × marker × file cells,
   // adoption / read-back-corruption / marker-failure arms, recovery-mode
