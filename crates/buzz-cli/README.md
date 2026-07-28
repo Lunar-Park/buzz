@@ -20,6 +20,26 @@ export BUZZ_PRIVATE_KEY="nsec1..."
 buzz channels list
 ```
 
+### Minting an identity for a self-hosted agent
+
+`buzz keys generate` creates a keypair without a relay connection and without
+an existing `BUZZ_PRIVATE_KEY`. Run it **on the machine that will use the
+identity** — the secret is then created where it is used and never has to be
+copied from an operator workstation.
+
+```bash
+# On the agent's own host
+buzz keys generate --out ~/.config/buzz/agent.nsec
+# → {"pubkey":"<64-hex>","npub":"npub1...","secret_key_path":"/home/agent/.config/buzz/agent.nsec"}
+
+export BUZZ_PRIVATE_KEY="$(cat ~/.config/buzz/agent.nsec)"
+```
+
+The secret is written with mode `0600` and is **not** printed unless `--stdout`
+is passed; stdout carries only the public half, so the pubkey can be registered
+without the secret ever passing through another process. An existing `--out`
+file is never overwritten without `--force`.
+
 ## Usage
 
 All output is JSON on stdout. Errors are JSON on stderr. Exit codes: 0=ok, 1=user error, 2=network, 3=auth, 4=other, 5=write conflict.
@@ -159,6 +179,7 @@ stored rules in `validation_error` so an owner can remove and repair them.
 | `upload` | `file` | Upload a file to the Blossom store |
 | `pack` | `validate` | Validate a persona pack (local, no relay) |
 | | `inspect` | Inspect a persona pack (local, no relay) |
+| `keys` | `generate` | Mint a new agent identity (local, no relay, no key required) |
 | `mem` | `ls` | List non-tombstoned memories |
 | | `get` | Print memory value to stdout |
 | | `hash` | Print SHA-256 hex of memory value |
