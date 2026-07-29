@@ -45,6 +45,11 @@ pub struct TeamEventContent {
     /// membership (see the Sietch Tabr incident).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persona_ids: Option<Vec<String>>,
+    /// Existing self-hosted identities. The same omission semantics as
+    /// `persona_ids` preserve local membership when reading events from older
+    /// clients that do not publish this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connected_agent_pubkeys: Option<Vec<String>>,
 }
 
 /// Project a `TeamRecord` onto the content fields published in team events.
@@ -59,6 +64,7 @@ pub fn team_event_content(record: &TeamRecord) -> TeamEventContent {
         // the struct doc comments).
         instructions: Some(record.instructions.clone()),
         persona_ids: Some(record.persona_ids.clone()),
+        connected_agent_pubkeys: Some(record.connected_agent_pubkeys.clone()),
     }
 }
 
@@ -111,6 +117,7 @@ mod tests {
             description: Some("A test team".to_string()),
             instructions: Some("Coordinate carefully.".to_string()),
             persona_ids: vec!["p1".to_string(), "p2".to_string()],
+            connected_agent_pubkeys: vec![],
             is_builtin: false,
             source_dir: Some(PathBuf::from("/local/only/path")),
             is_symlink: true,
@@ -154,6 +161,7 @@ mod tests {
         // Published fields present.
         assert!(json.contains("\"name\""));
         assert!(json.contains("\"persona_ids\""));
+        assert!(json.contains("\"connected_agent_pubkeys\""));
         assert!(json.contains("\"instructions\""));
         // Local-only / install-specific fields never published.
         assert!(!json.contains("source_dir"));
@@ -199,6 +207,25 @@ mod tests {
         assert_eq!(event_content.persona_ids, Some(vec![]));
         let json = serde_json::to_string(&event_content).unwrap();
         assert!(json.contains("\"persona_ids\":[]"));
+    }
+
+    #[test]
+    fn content_publishes_connected_agent_pubkeys_even_when_empty() {
+        let mut team = sample_team();
+        team.connected_agent_pubkeys =
+            vec!["4687f50de3a9e235e28eb58d68b0746062d7be6401bbf78a766bbd6f96ffe3c9".into()];
+        let event_content = team_event_content(&team);
+        assert_eq!(
+            event_content.connected_agent_pubkeys,
+            Some(team.connected_agent_pubkeys)
+        );
+    }
+
+    #[test]
+    fn old_content_without_connected_agents_preserves_unknown_state() {
+        let legacy = r#"{"name":"Old Team","persona_ids":["p1"]}"#;
+        let restored: TeamEventContent = serde_json::from_str(legacy).unwrap();
+        assert_eq!(restored.connected_agent_pubkeys, None);
     }
 
     // ── instructions wire semantics (tri-state: absent/null/value) ────────

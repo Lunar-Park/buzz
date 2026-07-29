@@ -394,6 +394,7 @@ fn local_team() -> TeamRecord {
         description: Some("local desc".to_string()),
         instructions: None,
         persona_ids: vec!["p-local".to_string()],
+        connected_agent_pubkeys: vec!["local-connected".to_string()],
         is_builtin: false,
         source_dir: Some(std::path::PathBuf::from("/local/team/dir")),
         is_symlink: true,
@@ -410,6 +411,7 @@ fn team_content(name: &str) -> TeamEventContent {
         description: Some("remote desc".to_string()),
         instructions: Some(Some("remote instructions".to_string())),
         persona_ids: Some(vec!["p-remote-1".to_string(), "p-remote-2".to_string()]),
+        connected_agent_pubkeys: Some(vec!["remote-connected".to_string()]),
     }
 }
 
@@ -421,6 +423,7 @@ fn team_content_omitting_optional_fields(name: &str) -> TeamEventContent {
         description: Some("remote desc".to_string()),
         instructions: None,
         persona_ids: None,
+        connected_agent_pubkeys: None,
     }
 }
 
@@ -432,6 +435,7 @@ fn team_content_clearing_optional_fields(name: &str) -> TeamEventContent {
         description: Some("remote desc".to_string()),
         instructions: Some(None),
         persona_ids: Some(vec![]),
+        connected_agent_pubkeys: Some(vec![]),
     }
 }
 
@@ -453,6 +457,10 @@ fn inbound_team_match_patches_shared_preserves_local() {
     assert_eq!(
         t.persona_ids,
         vec!["p-remote-1".to_string(), "p-remote-2".to_string()]
+    );
+    assert_eq!(
+        t.connected_agent_pubkeys,
+        vec!["remote-connected".to_string()]
     );
     // Install-local fields preserved.
     assert_eq!(t.id, TEAM_ID);
@@ -500,6 +508,11 @@ fn inbound_team_omitted_fields_preserve_local() {
         vec!["p-local".to_string()],
         "omitted persona_ids preserves local membership rather than wiping it"
     );
+    assert_eq!(
+        t.connected_agent_pubkeys,
+        vec!["local-connected".to_string()],
+        "omitted connected_agent_pubkeys preserves local membership"
+    );
 }
 
 #[test]
@@ -523,6 +536,11 @@ fn inbound_team_explicit_clear_overwrites_local() {
         t.persona_ids,
         Vec::<String>::new(),
         "explicit empty array clears membership"
+    );
+    assert_eq!(
+        t.connected_agent_pubkeys,
+        Vec::<String>::new(),
+        "explicit empty connected-agent array clears membership"
     );
 }
 

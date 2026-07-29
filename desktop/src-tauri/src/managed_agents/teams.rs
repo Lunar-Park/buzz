@@ -58,6 +58,7 @@ fn built_in_team_records(built_ins: &[BuiltInTeam], now: &str) -> Vec<TeamRecord
             description: team.description.map(|s| s.to_string()),
             instructions: None,
             persona_ids: team.persona_ids.iter().map(|s| s.to_string()).collect(),
+            connected_agent_pubkeys: Vec::new(),
             is_builtin: true,
             source_dir: None,
             is_symlink: false,
@@ -117,6 +118,7 @@ fn merge_teams_impl(
                     .iter()
                     .map(String::as_str)
                     .eq(seed.persona_ids.iter().copied())
+                && record.connected_agent_pubkeys.is_empty()
                 && record.source_dir.is_none()
                 && !record.is_symlink
         })
