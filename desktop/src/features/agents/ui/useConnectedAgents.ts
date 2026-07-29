@@ -6,8 +6,70 @@ import {
   listConnectedAgents,
 } from "@/shared/api/remoteAgentApi";
 import type { ConnectedAgent } from "@/shared/api/remoteAgentTypes";
+import { addChannelMembers } from "@/shared/api/tauri";
+import type { Channel, ChannelRole } from "@/shared/api/types";
+import { channelsQueryKey } from "@/features/channels/hooks";
+import { relayAgentsQueryKey } from "@/features/agents/hooks";
+import { normalizePubkey } from "@/shared/lib/pubkey";
+import { connectedAgentMembershipAdded } from "./connectedAgentChannelIntent";
 
 export const connectedAgentsQueryKey = ["connected-agents"] as const;
+
+export type AttachConnectedAgentToChannelInput = {
+  agent: ConnectedAgent;
+  channelId: string;
+  role?: Exclude<ChannelRole, "owner">;
+};
+
+export type AttachConnectedAgentToChannelResult = {
+  agent: ConnectedAgent;
+  membershipAdded: boolean;
+};
+
+/**
+ * Add a self-hosted agent to a relay channel without crossing the custody
+ * boundary. This writes owner-signed membership only: it never starts,
+ * deploys, restarts, or otherwise acts on the remote process.
+ */
+export function useAttachConnectedAgentToChannelMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      agent,
+      channelId,
+      role = "bot",
+    }: AttachConnectedAgentToChannelInput): Promise<AttachConnectedAgentToChannelResult> => {
+      const normalizedPubkey = normalizePubkey(agent.pubkey);
+      const result = await addChannelMembers({
+        channelId,
+        pubkeys: [normalizedPubkey],
+        role,
+      });
+
+      return {
+        agent,
+        membershipAdded: connectedAgentMembershipAdded(
+          normalizedPubkey,
+          result,
+        ),
+      };
+    },
+    onSettled: async (_data, _error, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: channelsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: relayAgentsQueryKey }),
+        ...(variables
+          ? [
+              queryClient.invalidateQueries({
+                queryKey: ["channels", variables.channelId, "members"],
+              }),
+            ]
+          : []),
+      ]);
+    },
+  });
+}
 
 /**
  * Connected self-hosted agents.
@@ -36,6 +98,8 @@ export function useConnectedAgents() {
   const queryClient = useQueryClient();
   const query = useConnectedAgentsQuery();
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [agentToAddToChannel, setAgentToAddToChannel] =
+    React.useState<ConnectedAgent | null>(null);
   const [noticeMessage, setNoticeMessage] = React.useState<string | null>(null);
 
   const disconnectMutation = useMutation({
@@ -66,16 +130,31 @@ export function useConnectedAgents() {
     [queryClient],
   );
 
+  const handleAddedToChannel = React.useCallback(
+    (channel: Channel, result: AttachConnectedAgentToChannelResult) => {
+      setAgentToAddToChannel(null);
+      setNoticeMessage(
+        result.membershipAdded
+          ? `Added ${result.agent.name} to ${channel.name} as a bot. The agent remains self-supervised on ${result.agent.host}.`
+          : `${result.agent.name} is already available in ${channel.name}.`,
+      );
+    },
+    [],
+  );
+
   return {
     agents: query.data ?? [],
+    agentToAddToChannel,
     error: query.error instanceof Error ? query.error : null,
     isLoading: query.isLoading,
     isPending: disconnectMutation.isPending,
     isDialogOpen,
     noticeMessage,
     openConnectDialog: () => setIsDialogOpen(true),
+    setAgentToAddToChannel,
     setIsDialogOpen,
     setNoticeMessage,
+    handleAddedToChannel,
     handleConnected,
     handleDisconnect,
   };
