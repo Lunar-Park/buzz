@@ -1,5 +1,12 @@
 import * as React from "react";
-import { Loader2, Plug, RefreshCw, Server, Unplug } from "lucide-react";
+import {
+  Loader2,
+  Plug,
+  RefreshCw,
+  Server,
+  Unplug,
+  UserPlus,
+} from "lucide-react";
 
 import { probeAgentHost } from "@/shared/api/remoteAgentApi";
 import type {
@@ -17,9 +24,9 @@ import { PubKey } from "@/shared/ui/PubKey";
  * There are deliberately no Start, Stop, Restart, or Deploy controls anywhere
  * in this section. Buzz does not own these processes, and a button that cannot
  * work is worse than no button — it invites the user to conclude the agent is
- * broken when it is simply not Buzz's to command. The only actions offered are
- * the two Buzz can actually perform: check whether the machine answers, and
- * forget the agent locally.
+ * broken when it is simply not Buzz's to command. The actions here stay inside
+ * Buzz's real authority: write channel membership, check whether the machine
+ * answers, or forget the local pointer.
  */
 export function ConnectedAgentsSection({
   agents,
@@ -27,6 +34,7 @@ export function ConnectedAgentsSection({
   isLoading,
   isPending,
   noticeMessage,
+  onAddToChannel,
   onConnect,
   onDisconnect,
 }: {
@@ -35,6 +43,7 @@ export function ConnectedAgentsSection({
   isLoading: boolean;
   isPending: boolean;
   noticeMessage: string | null;
+  onAddToChannel: (agent: ConnectedAgent) => void;
   onConnect: () => void;
   onDisconnect: (agent: ConnectedAgent) => void;
 }) {
@@ -116,6 +125,7 @@ export function ConnectedAgentsSection({
             agent={agent}
             isPending={isPending}
             key={agent.pubkey}
+            onAddToChannel={() => onAddToChannel(agent)}
             onCheck={() => checkHost(agent.host)}
             onDisconnect={() => onDisconnect(agent)}
             probe={probes[agent.host]}
@@ -129,12 +139,14 @@ export function ConnectedAgentsSection({
 function ConnectedAgentRow({
   agent,
   isPending,
+  onAddToChannel,
   onCheck,
   onDisconnect,
   probe,
 }: {
   agent: ConnectedAgent;
   isPending: boolean;
+  onAddToChannel: () => void;
   onCheck: () => void;
   onDisconnect: () => void;
   probe: HostProbeResult | "pending" | undefined;
@@ -160,6 +172,17 @@ function ConnectedAgentRow({
         </div>
       </div>
       <div className="flex shrink-0 gap-2">
+        <Button
+          aria-label={`Add ${agent.name} to channel`}
+          disabled={isPending}
+          onClick={onAddToChannel}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <UserPlus />
+          Add to channel
+        </Button>
         <Button
           aria-label={`Check ${agent.host}`}
           disabled={probe === "pending"}
