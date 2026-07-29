@@ -6,6 +6,7 @@ import type {
   CreateTeamInput,
   UpdateTeamInput,
 } from "@/shared/api/types";
+import type { ConnectedAgent } from "@/shared/api/remoteAgentTypes";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Checkbox } from "@/shared/ui/checkbox";
@@ -34,6 +35,7 @@ type TeamDialogProps = {
   submitLabel: string;
   initialValues: CreateTeamInput | UpdateTeamInput | null;
   personas: AgentPersona[];
+  connectedAgents: ConnectedAgent[];
   error: Error | null;
   isPending: boolean;
   onOpenChange: (open: boolean) => void;
@@ -48,6 +50,7 @@ export function TeamDialog({
   submitLabel,
   initialValues,
   personas,
+  connectedAgents,
   error,
   isPending,
   onOpenChange,
@@ -60,6 +63,8 @@ export function TeamDialog({
   const [selectedPersonaIds, setSelectedPersonaIds] = React.useState<string[]>(
     [],
   );
+  const [selectedConnectedAgentPubkeys, setSelectedConnectedAgentPubkeys] =
+    React.useState<string[]>([]);
   const [
     initialSelectedPersonaIdsForSort,
     setInitialSelectedPersonaIdsForSort,
@@ -73,6 +78,17 @@ export function TeamDialog({
 
     return countMissingPersonaIds(initialValues.personaIds, personas);
   }, [initialValues, personas]);
+  const missingInitialConnectedAgentCount = React.useMemo(() => {
+    if (!initialValues) {
+      return 0;
+    }
+    const available = new Set(
+      connectedAgents.map((agent) => agent.pubkey.toLowerCase()),
+    );
+    return initialValues.connectedAgentPubkeys.filter(
+      (pubkey) => !available.has(pubkey.toLowerCase()),
+    ).length;
+  }, [connectedAgents, initialValues]);
 
   React.useEffect(() => {
     if (!open || !initialValues) {
@@ -83,6 +99,7 @@ export function TeamDialog({
     setTeamDescription(initialValues.description ?? "");
     setInstructions(initialValues.instructions ?? "");
     setSelectedPersonaIds(copySelectedPersonaIds(initialValues.personaIds));
+    setSelectedConnectedAgentPubkeys([...initialValues.connectedAgentPubkeys]);
     setInitialSelectedPersonaIdsForSort(
       copySelectedPersonaIds(initialValues.personaIds),
     );
@@ -94,6 +111,7 @@ export function TeamDialog({
       setTeamDescription("");
       setInstructions("");
       setSelectedPersonaIds([]);
+      setSelectedConnectedAgentPubkeys([]);
       setInitialSelectedPersonaIdsForSort([]);
       setConfirmRemovalOpen(false);
     }
@@ -106,6 +124,14 @@ export function TeamDialog({
       current.includes(personaId)
         ? current.filter((id) => id !== personaId)
         : [...current, personaId],
+    );
+  }
+
+  function toggleConnectedAgent(pubkey: string) {
+    setSelectedConnectedAgentPubkeys((current) =>
+      current.includes(pubkey)
+        ? current.filter((candidate) => candidate !== pubkey)
+        : [...current, pubkey],
     );
   }
 
@@ -131,6 +157,11 @@ export function TeamDialog({
       description: teamDescription.trim() || undefined,
       instructions: instructions.trim() || undefined,
       personaIds: filterAvailablePersonaIds(selectedPersonaIds, personas),
+      connectedAgentPubkeys: selectedConnectedAgentPubkeys.filter((pubkey) =>
+        connectedAgents.some(
+          (agent) => agent.pubkey.toLowerCase() === pubkey.toLowerCase(),
+        ),
+      ),
     };
 
     if (initialValues && "id" in initialValues) {
@@ -231,6 +262,10 @@ export function TeamDialog({
                   placeholder="Optional instructions applied to every deployed team member."
                   value={instructions}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Applied when Buzz creates managed members. Connected agents
+                  keep their own instructions and lifecycle.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -238,18 +273,27 @@ export function TeamDialog({
                 <p className="text-xs text-muted-foreground">
                   Select the agents to include in this team.
                 </p>
-                {missingInitialPersonaCount > 0 ? (
+                {missingInitialPersonaCount +
+                  missingInitialConnectedAgentCount >
+                0 ? (
                   <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                    This team references {missingInitialPersonaCount} agent
-                    {missingInitialPersonaCount === 1 ? "" : "s"} that{" "}
-                    {missingInitialPersonaCount === 1 ? "is" : "are"} no longer
-                    in My Agents. Save to remove them, or add them back to My
-                    Agents first.
+                    This team references{" "}
+                    {missingInitialPersonaCount +
+                      missingInitialConnectedAgentCount}{" "}
+                    agent
+                    {missingInitialPersonaCount +
+                      missingInitialConnectedAgentCount ===
+                    1
+                      ? ""
+                      : "s"}{" "}
+                    that are no longer available on this device. Save to remove
+                    them, or reconnect them first.
                   </p>
                 ) : null}
-                {personas.length === 0 ? (
+                {personas.length === 0 && connectedAgents.length === 0 ? (
                   <p className="py-4 text-center text-sm text-muted-foreground">
-                    {personaCatalogCopy.teamEmptyState}
+                    {personaCatalogCopy.teamEmptyState} You can also connect a
+                    self-hosted agent from the agent library.
                   </p>
                 ) : (
                   <div
@@ -303,6 +347,49 @@ export function TeamDialog({
                         </div>
                       );
                     })}
+                    {connectedAgents.map((agent) => {
+                      const isSelected = selectedConnectedAgentPubkeys.includes(
+                        agent.pubkey,
+                      );
+
+                      return (
+                        <div
+                          aria-selected={isSelected}
+                          className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/50"
+                          key={agent.pubkey}
+                          onClick={() => {
+                            if (!isPending) {
+                              toggleConnectedAgent(agent.pubkey);
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              !isPending &&
+                              (event.key === "Enter" || event.key === " ")
+                            ) {
+                              event.preventDefault();
+                              toggleConnectedAgent(agent.pubkey);
+                            }
+                          }}
+                          role="option"
+                          tabIndex={0}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            className="pointer-events-none"
+                            disabled={isPending}
+                            tabIndex={-1}
+                          />
+                          <ProfileAvatar
+                            avatarUrl={null}
+                            className="h-6 w-6 text-2xs"
+                            label={agent.name}
+                          />
+                          <span className="text-sm">{agent.name}</span>
+                          <Badge variant="secondary">Self-hosted</Badge>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -327,7 +414,8 @@ export function TeamDialog({
                 <Button
                   disabled={
                     name.trim().length === 0 ||
-                    selectedPersonaIds.length === 0 ||
+                    (selectedPersonaIds.length === 0 &&
+                      selectedConnectedAgentPubkeys.length === 0) ||
                     isPending
                   }
                   onClick={() => void handleSubmit()}

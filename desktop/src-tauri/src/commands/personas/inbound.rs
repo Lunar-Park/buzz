@@ -407,8 +407,9 @@ fn apply_inbound_managed_agent(
 /// Merge an inbound kind:30176 team projection into the local set.
 ///
 /// Matches the local record whose `id` equals the event's d-tag (the d-tag IS
-/// the team id — see `build_team_event`). On match, overwrite ONLY the three
-/// shared fields (`name`, `description`, `persona_ids`); install-specific local
+/// the team id — see `build_team_event`). On match, overwrite ONLY the shared
+/// fields (`name`, `description`, `instructions`, `persona_ids`, and
+/// `connected_agent_pubkeys`); install-specific local
 /// fields (`source_dir`, `is_symlink`, `symlink_target`, `is_builtin`,
 /// `version`, `created_at`) are preserved. On no match, insert a fresh record
 /// reusing the d-tag as the id so a re-received event stays idempotent —
@@ -429,6 +430,9 @@ fn apply_inbound_team(teams: &mut Vec<TeamRecord>, d_tag: String, inbound: TeamE
             if let Some(persona_ids) = inbound.persona_ids {
                 local.persona_ids = persona_ids;
             }
+            if let Some(connected_agent_pubkeys) = inbound.connected_agent_pubkeys {
+                local.connected_agent_pubkeys = connected_agent_pubkeys;
+            }
         }
         None => teams.push(TeamRecord {
             id: d_tag,
@@ -438,6 +442,7 @@ fn apply_inbound_team(teams: &mut Vec<TeamRecord>, d_tag: String, inbound: TeamE
             // pre-fix client simply means no known value.
             instructions: inbound.instructions.unwrap_or_default(),
             persona_ids: inbound.persona_ids.unwrap_or_default(),
+            connected_agent_pubkeys: inbound.connected_agent_pubkeys.unwrap_or_default(),
             is_builtin: false,
             source_dir: None,
             is_symlink: false,

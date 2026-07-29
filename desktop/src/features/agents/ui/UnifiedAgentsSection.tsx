@@ -11,6 +11,7 @@ import { friendlyAgentLastError } from "@/features/agents/lib/friendlyAgentLastE
 import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
 import { useUserProfileQuery } from "@/features/profile/hooks";
 import type { AgentPersona, ManagedAgent } from "@/shared/api/types";
+import type { ConnectedAgent } from "@/shared/api/remoteAgentTypes";
 import type { ProfilePanelOpenOptions } from "@/shared/context/ProfilePanelContext";
 import { useFeedbackToasts } from "@/shared/hooks/useToastEffect";
 import { useFileImportZone } from "@/shared/hooks/useFileImportZone";
@@ -25,6 +26,7 @@ import { IdentityCardSkeleton } from "@/shared/ui/identity-card-skeleton";
 import { AgentIdentityCard } from "./AgentIdentityCard";
 import { AgentRuntimeAvatarControl } from "./AgentRuntimeAvatarControl";
 import { CreateIdentityCard } from "./CreateIdentityCard";
+import { ConnectedAgentCard } from "./ConnectedAgentsSection";
 import { PersonaActionsMenu } from "./PersonaActionsMenu";
 import { buildUnifiedGroups, pickProfileAgent } from "./unifiedAgentGroups";
 
@@ -34,6 +36,10 @@ type UnifiedAgentsSectionProps = {
   actionNoticeMessage: string | null;
   agents: ManagedAgent[];
   agentsError: Error | null;
+  connectedAgents: ConnectedAgent[];
+  connectedAgentsError: Error | null;
+  connectedAgentsNoticeMessage: string | null;
+  isConnectedAgentsLoading: boolean;
   isActionPending: boolean;
   isAgentsLoading: boolean;
   startingAgentPubkey: string | null;
@@ -52,6 +58,9 @@ type UnifiedAgentsSectionProps = {
   isPersonasLoading: boolean;
   isPersonasPending: boolean;
   onCreatePersona: () => void;
+  onConnectAgent: () => void;
+  onAddConnectedAgentToChannel: (agent: ConnectedAgent) => void;
+  onDisconnectAgent: (agent: ConnectedAgent) => void;
   onDiscoverPersonas: () => void;
   onDuplicatePersona: (persona: AgentPersona) => void;
   onEditPersona: (persona: AgentPersona) => void;
@@ -77,6 +86,10 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
     defaultModel,
     agents,
     agentsError,
+    connectedAgents,
+    connectedAgentsError,
+    connectedAgentsNoticeMessage,
+    isConnectedAgentsLoading,
     isActionPending,
     isAgentsLoading,
     startingAgentPubkey,
@@ -92,6 +105,9 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
     isPersonasLoading,
     isPersonasPending,
     onCreatePersona,
+    onConnectAgent,
+    onAddConnectedAgentToChannel,
+    onDisconnectAgent,
     onDiscoverPersonas,
     onDuplicatePersona,
     onEditPersona,
@@ -125,7 +141,8 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
 
   useFeedbackToasts(actionNoticeMessage, actionErrorMessage);
   useFeedbackToasts(personaFeedbackNoticeMessage, personaFeedbackErrorMessage);
-  const isLoading = isAgentsLoading || isPersonasLoading;
+  const isLoading =
+    isAgentsLoading || isPersonasLoading || isConnectedAgentsLoading;
 
   return (
     <section
@@ -188,8 +205,19 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
                 />
               );
             })}
+            {connectedAgents.map((agent) => (
+              <ConnectedAgentCard
+                agent={agent}
+                isPending={isActionPending}
+                key={agent.pubkey}
+                onAddToChannel={() => onAddConnectedAgentToChannel(agent)}
+                onDisconnect={() => onDisconnectAgent(agent)}
+                onOpenProfile={() => onOpenAgentProfile(agent.pubkey)}
+              />
+            ))}
             <NewAgentCard
               isPending={isPersonasPending}
+              onConnect={onConnectAgent}
               onCreate={onCreatePersona}
               onDiscover={onDiscoverPersonas}
               onImport={openFilePicker}
@@ -237,6 +265,20 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
           className={`${AGENT_CARD_COLUMN_CLASS} rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive`}
         >
           {personasError.message}
+        </p>
+      ) : null}
+      {connectedAgentsError ? (
+        <p
+          className={`${AGENT_CARD_COLUMN_CLASS} rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive`}
+        >
+          Could not load connected agents: {connectedAgentsError.message}
+        </p>
+      ) : null}
+      {connectedAgentsNoticeMessage ? (
+        <p
+          className={`${AGENT_CARD_COLUMN_CLASS} rounded-2xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground`}
+        >
+          {connectedAgentsNoticeMessage}
         </p>
       ) : null}
     </section>
@@ -441,11 +483,13 @@ function firstAvatarUrl(
 
 function NewAgentCard({
   isPending,
+  onConnect,
   onCreate,
   onDiscover,
   onImport,
 }: {
   isPending: boolean;
+  onConnect: () => void;
   onCreate: () => void;
   onDiscover: () => void;
   onImport: () => void;
@@ -461,6 +505,9 @@ function NewAgentCard({
       >
         <DropdownMenuItem disabled={isPending} onClick={onCreate}>
           Create agent
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={isPending} onClick={onConnect}>
+          Connect self-hosted agent
         </DropdownMenuItem>
         <DropdownMenuItem disabled={isPending} onClick={onDiscover}>
           Discover agents

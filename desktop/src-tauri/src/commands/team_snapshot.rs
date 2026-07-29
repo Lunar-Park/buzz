@@ -170,6 +170,7 @@ pub(crate) fn build_import_team(
         name: name.to_string(),
         description: snapshot.team.description.clone(),
         persona_ids,
+        connected_agent_pubkeys: Vec::new(),
         instructions: snapshot.team.instructions.clone(),
         is_builtin: false,
         source_dir: None,
@@ -270,6 +271,13 @@ fn build_team_export_snapshot(
     memory_level: MemoryLevel,
     memory_entries_by_persona: &std::collections::HashMap<String, Vec<AgentSnapshotMemoryEntry>>,
 ) -> Result<TeamSnapshot, String> {
+    if !team.connected_agent_pubkeys.is_empty() {
+        return Err(
+            "Teams with connected self-hosted agents cannot be exported as snapshots yet."
+                .to_string(),
+        );
+    }
+
     let members = team
         .persona_ids
         .iter()

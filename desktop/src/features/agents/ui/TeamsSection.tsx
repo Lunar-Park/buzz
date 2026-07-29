@@ -8,7 +8,9 @@ import {
 } from "lucide-react";
 
 import { resolveTeamPersonas } from "@/features/agents/lib/teamPersonas";
+import { resolveTeamConnectedAgents } from "@/features/agents/lib/teamConnectedAgents";
 import type { AgentPersona, AgentTeam } from "@/shared/api/types";
+import type { ConnectedAgent } from "@/shared/api/remoteAgentTypes";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +29,7 @@ const TEAM_CARD_GRID_CLASS = `${TEAM_CARD_COLUMN_CLASS} mx-auto grid max-w-[996p
 type TeamsSectionProps = {
   teams: AgentTeam[];
   personas: AgentPersona[];
+  connectedAgents: ConnectedAgent[];
   error: Error | null;
   isLoading: boolean;
   isPending: boolean;
@@ -42,6 +45,7 @@ type TeamsSectionProps = {
 export function TeamsSection({
   teams,
   personas,
+  connectedAgents,
   error,
   isLoading,
   isPending,
@@ -88,6 +92,15 @@ export function TeamsSection({
             const resolution = resolveTeamPersonas(team, personas);
             const missingPersonaCount = resolution.missingPersonaCount;
             const hasMissingPersonas = resolution.hasMissingPersonas;
+            const connectedResolution = resolveTeamConnectedAgents(
+              team,
+              connectedAgents,
+            );
+            const hasMissingMembers =
+              hasMissingPersonas ||
+              connectedResolution.hasMissingConnectedAgents;
+            const memberCount =
+              team.personaIds.length + team.connectedAgentPubkeys.length;
 
             return (
               <TeamIdentityCard
@@ -107,7 +120,9 @@ export function TeamsSection({
                       onCloseAutoFocus={(event) => event.preventDefault()}
                     >
                       <DropdownMenuItem
-                        disabled={isPending || hasMissingPersonas}
+                        disabled={
+                          isPending || hasMissingMembers || memberCount === 0
+                        }
                         onClick={() => onAddToChannel(team)}
                       >
                         <Rocket className="h-4 w-4" />
@@ -122,14 +137,18 @@ export function TeamsSection({
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        disabled={isPending || hasMissingPersonas}
+                        disabled={isPending || hasMissingMembers}
                         onClick={() => onDuplicate(team)}
                       >
                         <CopyPlus className="h-4 w-4" />
                         Duplicate
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        disabled={isPending || hasMissingPersonas}
+                        disabled={
+                          isPending ||
+                          hasMissingMembers ||
+                          team.connectedAgentPubkeys.length > 0
+                        }
                         onClick={() => onShare(team)}
                       >
                         <Share2 className="h-4 w-4" />
@@ -151,19 +170,28 @@ export function TeamsSection({
                 description={team.description}
                 isSymlink={team.isSymlink}
                 key={team.id}
-                memberCount={team.personaIds.length}
+                memberCount={memberCount}
                 personas={resolution.resolvedPersonas}
+                connectedAgents={connectedResolution.resolvedConnectedAgents}
                 sourceDir={team.sourceDir}
                 symlinkTarget={team.symlinkTarget}
                 teamName={team.name}
                 version={team.version}
               >
-                {hasMissingPersonas ? (
+                {hasMissingMembers ? (
                   <p className="border-t border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                    {missingPersonaCount} agent
-                    {missingPersonaCount === 1 ? "" : "s"} in this team{" "}
-                    {missingPersonaCount === 1 ? "is" : "are"} no longer in your
-                    agents. Edit the team to fix it before deploying or sharing.
+                    {missingPersonaCount +
+                      connectedResolution.missingConnectedAgentPubkeys
+                        .length}{" "}
+                    agent
+                    {missingPersonaCount +
+                      connectedResolution.missingConnectedAgentPubkeys
+                        .length ===
+                    1
+                      ? ""
+                      : "s"}{" "}
+                    in this team are unavailable. Edit the team before
+                    deploying.
                   </p>
                 ) : null}
               </TeamIdentityCard>

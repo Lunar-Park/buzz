@@ -20,7 +20,6 @@ import { SecretRevealDialog } from "./SecretRevealDialog";
 import { TeamDeleteDialog } from "./TeamDeleteDialog";
 import { TeamDialog } from "./TeamDialog";
 import { ConnectAgentDialog } from "./ConnectAgentDialog";
-import { ConnectedAgentsSection } from "./ConnectedAgentsSection";
 import { TeamsSection } from "./TeamsSection";
 import {
   AGENT_CARD_GRID_COLUMNS_CLASS,
@@ -70,6 +69,7 @@ export function AgentsView() {
 
   const isActionPending =
     agents.isPending ||
+    connected.isPending ||
     personas.isPending ||
     teamActions.createTeamMutation.isPending ||
     teamActions.updateTeamMutation.isPending ||
@@ -164,6 +164,10 @@ export function AgentsView() {
                   ? agents.managedAgentsQuery.error
                   : null
               }
+              connectedAgents={connected.agents}
+              connectedAgentsError={connected.error}
+              connectedAgentsNoticeMessage={connected.noticeMessage}
+              isConnectedAgentsLoading={connected.isLoading}
               isActionPending={isActionPending}
               isAgentsLoading={agents.managedAgentsQuery.isLoading}
               startingAgentPubkey={agents.startingAgentPubkey}
@@ -200,6 +204,11 @@ export function AgentsView() {
               isPersonasLoading={personas.personasQuery.isLoading}
               isPersonasPending={personas.isPending}
               onCreatePersona={openUnifiedCreate}
+              onConnectAgent={connected.openConnectDialog}
+              onAddConnectedAgentToChannel={connected.setAgentToAddToChannel}
+              onDisconnectAgent={(agent) => {
+                void connected.handleDisconnect(agent);
+              }}
               onDiscoverPersonas={personas.openCatalog}
               onDuplicatePersona={personas.openDuplicate}
               onEditPersona={personas.openEdit}
@@ -210,19 +219,6 @@ export function AgentsView() {
               onDeletePersona={personas.openDelete}
               onImportSnapshotFile={(fileBytes, fileName) => {
                 void personas.handleImportSnapshotFile(fileBytes, fileName);
-              }}
-            />
-
-            <ConnectedAgentsSection
-              agents={connected.agents}
-              error={connected.error}
-              isLoading={connected.isLoading}
-              isPending={connected.isPending}
-              noticeMessage={connected.noticeMessage}
-              onAddToChannel={connected.setAgentToAddToChannel}
-              onConnect={connected.openConnectDialog}
-              onDisconnect={(agent) => {
-                void connected.handleDisconnect(agent);
               }}
             />
 
@@ -248,6 +244,7 @@ export function AgentsView() {
                 teamImportInputRef.current?.click();
               }}
               personas={personas.libraryPersonas}
+              connectedAgents={connected.agents}
               teams={teamActions.teams}
             />
           </div>
@@ -513,6 +510,7 @@ export function AgentsView() {
           onSubmit={teamActions.handleTeamSubmit}
           open={teamActions.teamDialogState !== null}
           personas={personas.libraryPersonas}
+          connectedAgents={connected.agents}
           submitLabel={teamActions.teamDialogState.submitLabel}
           title={teamActions.teamDialogState.title}
         />
@@ -533,6 +531,7 @@ export function AgentsView() {
       ) : null}
       {teamActions.teamToAddToChannel ? (
         <AddTeamToChannelDialog
+          connectedAgents={connected.agents}
           onDeployed={teamActions.handleTeamDeployed}
           onOpenChange={(open) => {
             if (!open) {

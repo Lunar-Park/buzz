@@ -1,6 +1,6 @@
 import { resolveTeamPersonas } from "@/features/agents/lib/teamPersonas";
 import type { AgentPersona, AgentTeam, ChannelRole } from "@/shared/api/types";
-import { truncatePubkey } from "@/shared/lib/pubkey";
+import { normalizePubkey, truncatePubkey } from "@/shared/lib/pubkey";
 
 export type TeamMentionMember = {
   displayName: string;
@@ -87,6 +87,26 @@ function findTeamMemberTarget(
     : null;
 }
 
+function findConnectedTeamMemberTarget(
+  pubkey: string,
+  candidates: readonly MentionCandidate[],
+): TeamMentionMember | null {
+  const normalized = normalizePubkey(pubkey);
+  const linked = candidates.find(
+    (candidate) =>
+      candidate.kind === "identity" &&
+      candidate.pubkey !== undefined &&
+      normalizePubkey(candidate.pubkey) === normalized,
+  );
+  if (!linked) return null;
+
+  return {
+    displayName: linked.displayName?.trim() || truncatePubkey(normalized),
+    kind: "identity",
+    pubkey: normalized,
+  };
+}
+
 /** Build autocomplete entries for editable, locally owned teams. */
 export function buildTeamMentionCandidates(
   teams: readonly AgentTeam[],
@@ -97,12 +117,21 @@ export function buildTeamMentionCandidates(
     if (team.isBuiltin || !team.name.trim()) return [];
 
     const resolution = resolveTeamPersonas(team, personas);
-    if (!resolution.isUsable) return [];
+    if (!resolution.isComplete) return [];
 
-    const teamMembers = resolution.resolvedPersonas
+    const personaMembers = resolution.resolvedPersonas
       .map((persona) => findTeamMemberTarget(persona, candidates))
       .filter((member): member is TeamMentionMember => member !== null);
-    if (teamMembers.length !== resolution.resolvedPersonas.length) return [];
+    if (personaMembers.length !== resolution.resolvedPersonas.length) return [];
+
+    const connectedPubkeys = team.connectedAgentPubkeys ?? [];
+    const connectedMembers = connectedPubkeys
+      .map((pubkey) => findConnectedTeamMemberTarget(pubkey, candidates))
+      .filter((member): member is TeamMentionMember => member !== null);
+    if (connectedMembers.length !== connectedPubkeys.length) return [];
+
+    const teamMembers = [...personaMembers, ...connectedMembers];
+    if (teamMembers.length === 0) return [];
 
     const mentionNames = new Set<string>();
     for (const member of teamMembers) {

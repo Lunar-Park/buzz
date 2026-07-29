@@ -823,13 +823,13 @@ export type UpdatePersonaInput = {
   behavior?: PersonaBehaviorInput;
 };
 
-// ── Team types ────────────────────────────────────────────────────────────────
 export type AgentTeam = {
   id: string;
   name: string;
   description: string | null;
   instructions: string | null;
   personaIds: string[];
+  connectedAgentPubkeys: string[];
   isBuiltin: boolean;
   /** Absolute path to the team's backing directory (if directory-backed). */
   sourceDir: string | null;
@@ -842,20 +842,20 @@ export type AgentTeam = {
   createdAt: string;
   updatedAt: string;
 };
-
 export type CreateTeamInput = {
   name: string;
   description?: string;
   instructions?: string;
   personaIds: string[];
+  connectedAgentPubkeys: string[];
 };
-
 export type UpdateTeamInput = {
   id: string;
   name: string;
   description?: string;
   instructions?: string;
   personaIds: string[];
+  connectedAgentPubkeys: string[];
 };
 // ── Channel Template types ─────────────────────────────────────────────────────
 
