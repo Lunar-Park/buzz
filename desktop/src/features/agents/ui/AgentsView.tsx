@@ -281,6 +281,7 @@ export function AgentsView() {
               isLoading={connected.isLoading}
               isPending={connected.isPending}
               noticeMessage={connected.noticeMessage}
+              onAddToChannel={connected.setAgentToAddToChannel}
               onConnect={connected.openConnectDialog}
               onDisconnect={(agent) => {
                 void connected.handleDisconnect(agent);
@@ -354,6 +355,19 @@ export function AgentsView() {
             }
           }}
           open={agents.agentToAddToChannel !== null}
+        />
+      ) : null}
+      {connected.agentToAddToChannel ? (
+        <AddAgentToChannelDialog
+          agent={connected.agentToAddToChannel}
+          kind="connected"
+          onAdded={connected.handleAddedToChannel}
+          onOpenChange={(open) => {
+            if (!open) {
+              connected.setAgentToAddToChannel(null);
+            }
+          }}
+          open={connected.agentToAddToChannel !== null}
         />
       ) : null}
       {agents.createdAgent ? (
