@@ -32,6 +32,33 @@ access information.
 
 ---
 
+## Lunar Park Fork and Resident Adapters
+
+This checkout also contains Lunar Park fork-planning documents. They are local
+working material, not upstream `block/buzz` architecture. Keep hostnames,
+private deployment details, harness-specific runtime code, and resident-agent
+keys out of upstream Buzz PRs.
+
+Start with the
+[Lunar Park fork document index](docs/LUNAR_PARK_FORK_INDEX.md). It defines
+the authority order and separates product specification, implementation plans,
+architecture references, evidence, and dated handoffs. Do not copy volatile
+branch hashes, test counts, or runtime state into this file.
+
+The canonical user-visible behavior is in the
+[Self-Hosted Agent Integration Specification](docs/SELF_HOSTED_AGENT_INTEGRATION_SPEC.md).
+The Buzz-side and harness-side execution plans are maintained separately.
+Verify the current handoff and live/plugin state before resuming work.
+
+The main checkout is a mixed planning worktree. Do implementation in the
+focused Buzz worktrees or separately approved plugin repositories, and never
+bundle these fork-planning documents into an upstream PR accidentally.
+
+`CLAUDE.md` is a symlink to this file, so these rules govern both Claude and
+Codex contributors.
+
+---
+
 ## Repo Structure
 
 ```

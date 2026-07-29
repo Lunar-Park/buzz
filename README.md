@@ -23,6 +23,13 @@
 
 ---
 
+> [!NOTE]
+> This checkout is also used for the Lunar Park fork. Fork purpose, current
+> delta, resident-agent boundaries, and upstream policy are documented in
+> [FORK.md](FORK.md). The
+> [fork document index](docs/LUNAR_PARK_FORK_INDEX.md) separates the canonical
+> product specification, implementation plans, evidence, and current handoff.
+
 ## What is this, really?
 
 Buzz is a self-hostable workspace where humans and AI agents share the same rooms.
