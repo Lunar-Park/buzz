@@ -10,7 +10,7 @@ import {
   useTeamsQuery,
   useUpdateTeamMutation,
 } from "@/features/agents/hooks";
-import type { CreateChannelManagedAgentsResult } from "@/features/agents/channelAgents";
+import type { DeployTeamToChannelResult } from "./AddTeamToChannelDialog";
 import { deletePersona } from "@/shared/api/tauriPersonas";
 import {
   confirmTeamSnapshotImport,
@@ -141,11 +141,14 @@ export function useTeamActions(
 
   function handleTeamDeployed(
     channel: Channel,
-    result: CreateChannelManagedAgentsResult,
+    result: DeployTeamToChannelResult,
   ) {
     actions.setActionErrorMessage(null);
-    const successCount = result.successes.length;
-    const failCount = result.failures.length;
+    const successCount =
+      result.managed.successes.length +
+      (result.requestedConnectedCount - result.connected.errors.length);
+    const failCount =
+      result.managed.failures.length + result.connected.errors.length;
     if (failCount === 0) {
       actions.setActionNoticeMessage(
         `Deployed ${successCount} ${successCount === 1 ? "agent" : "agents"} to ${channel.name}.`,
@@ -171,6 +174,7 @@ export function useTeamActions(
         name: "",
         description: "",
         personaIds: [],
+        connectedAgentPubkeys: [],
       },
     });
   }
@@ -186,6 +190,7 @@ export function useTeamActions(
         name: `${team.name} copy`,
         description: team.description ?? "",
         personaIds: [...team.personaIds],
+        connectedAgentPubkeys: [...team.connectedAgentPubkeys],
       },
     });
   }
@@ -217,6 +222,7 @@ export function useTeamActions(
         description: team.description ?? "",
         instructions: team.instructions ?? undefined,
         personaIds: [...team.personaIds],
+        connectedAgentPubkeys: [...team.connectedAgentPubkeys],
       },
     });
   }

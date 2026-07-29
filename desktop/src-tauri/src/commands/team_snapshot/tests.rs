@@ -105,6 +105,7 @@ fn team_export_round_trip_preserves_team_and_excludes_member_memory() {
         description: Some("Reviews changes".to_string()),
         instructions: Some("Be thorough.".to_string()),
         persona_ids: vec!["alice".to_string(), "bob".to_string()],
+        connected_agent_pubkeys: vec![],
         is_builtin: false,
         source_dir: None,
         is_symlink: false,
@@ -138,6 +139,36 @@ fn team_export_round_trip_preserves_team_and_excludes_member_memory() {
 }
 
 #[test]
+fn team_export_rejects_connected_members_instead_of_silently_dropping_them() {
+    let team = TeamRecord {
+        id: "resident-team".to_string(),
+        name: "Residents".to_string(),
+        description: None,
+        instructions: None,
+        persona_ids: vec![],
+        connected_agent_pubkeys: vec!["4".repeat(64)],
+        is_builtin: false,
+        source_dir: None,
+        is_symlink: false,
+        symlink_target: None,
+        version: None,
+        created_at: "now".to_string(),
+        updated_at: "now".to_string(),
+    };
+
+    let error = build_team_export_snapshot(
+        &team,
+        &[],
+        &[],
+        MemoryLevel::None,
+        &std::collections::HashMap::new(),
+    )
+    .unwrap_err();
+
+    assert!(error.contains("connected self-hosted agents"));
+}
+
+#[test]
 fn team_export_with_instance_and_memory_level_uses_supplied_entries() {
     let definitions = vec![AgentDefinition {
         id: "alice".to_string(),
@@ -167,6 +198,7 @@ fn team_export_with_instance_and_memory_level_uses_supplied_entries() {
         description: None,
         instructions: None,
         persona_ids: vec!["alice".to_string()],
+        connected_agent_pubkeys: vec![],
         is_builtin: false,
         source_dir: None,
         is_symlink: false,
@@ -681,6 +713,7 @@ fn full_rollback_at_teams_boundary_absent_agents_store() {
         description: None,
         instructions: None,
         persona_ids: vec![],
+        connected_agent_pubkeys: vec![],
         is_builtin: false,
         source_dir: None,
         is_symlink: false,

@@ -109,6 +109,41 @@ test("team mentions preserve team order and prefer concrete managed agents", () 
   );
 });
 
+test("team mentions include existing connected identities by public key", () => {
+  const selene =
+    "4687f50de3a9e235e28eb58d68b0746062d7be6401bbf78a766bbd6f96ffe3c9";
+  const [suggestion] = buildTeamMentionCandidates(
+    [
+      {
+        id: "resident-team",
+        name: "Residents",
+        isBuiltin: false,
+        personaIds: [],
+        connectedAgentPubkeys: [selene],
+      },
+    ],
+    [],
+    [
+      {
+        kind: "identity",
+        pubkey: selene,
+        displayName: "Selene",
+        isMember: true,
+        isAgent: true,
+      },
+    ],
+  );
+
+  assert.equal(suggestion.displayName, "Residents");
+  assert.deepEqual(suggestion.teamMembers, [
+    {
+      displayName: "Selene",
+      kind: "identity",
+      pubkey: selene,
+    },
+  ]);
+});
+
 test("only complete, owned teams with mentionable members are suggested", () => {
   const active = persona("active", "Active");
   const inactive = persona("inactive", "Inactive", false);

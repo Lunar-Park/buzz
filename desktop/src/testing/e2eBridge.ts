@@ -133,6 +133,7 @@ type MockTeamSeed = {
   name: string;
   description?: string | null;
   personaIds: string[];
+  connectedAgentPubkeys?: string[];
 };
 
 type MockSearchProfileSeed = {
@@ -878,6 +879,7 @@ type RawTeam = {
   name: string;
   description: string | null;
   persona_ids: string[];
+  connected_agent_pubkeys: string[];
   is_builtin: boolean;
   source_dir: string | null;
   is_symlink: boolean;
@@ -2281,6 +2283,7 @@ function resetMockTeams(config?: E2eConfig) {
       name: "Engineering",
       description: "Core engineering personas",
       persona_ids: [],
+      connected_agent_pubkeys: [],
       is_builtin: false,
       source_dir: null,
       is_symlink: false,
@@ -2294,6 +2297,7 @@ function resetMockTeams(config?: E2eConfig) {
       name: "Research Agents",
       description: "Directory-backed research team",
       persona_ids: [],
+      connected_agent_pubkeys: [],
       is_builtin: false,
       source_dir: "/Users/dev/agents/research",
       is_symlink: false,
@@ -2307,6 +2311,7 @@ function resetMockTeams(config?: E2eConfig) {
       name: "Platform Tools",
       description: "Symlinked platform team",
       persona_ids: [],
+      connected_agent_pubkeys: [],
       is_builtin: false,
       source_dir: "/Users/dev/agents/platform",
       is_symlink: true,
@@ -2323,6 +2328,7 @@ function resetMockTeams(config?: E2eConfig) {
       name: team.name,
       description: team.description ?? null,
       persona_ids: [...team.personaIds],
+      connected_agent_pubkeys: [...(team.connectedAgentPubkeys ?? [])],
       is_builtin: false,
       source_dir: null,
       is_symlink: false,
@@ -7876,6 +7882,7 @@ async function handleListTeams(): Promise<RawTeam[]> {
   return mockTeams.map((team) => ({
     ...team,
     persona_ids: [...team.persona_ids],
+    connected_agent_pubkeys: [...team.connected_agent_pubkeys],
   }));
 }
 
@@ -7884,6 +7891,7 @@ async function handleCreateTeam(args: {
     name: string;
     description?: string;
     personaIds: string[];
+    connectedAgentPubkeys?: string[];
   };
 }): Promise<RawTeam> {
   ensureMockPersonaIdsAreActive(args.input.personaIds);
@@ -7893,6 +7901,7 @@ async function handleCreateTeam(args: {
     name: args.input.name.trim(),
     description: args.input.description?.trim() || null,
     persona_ids: [...args.input.personaIds],
+    connected_agent_pubkeys: [...(args.input.connectedAgentPubkeys ?? [])],
     is_builtin: false,
     source_dir: null,
     is_symlink: false,
@@ -7902,7 +7911,11 @@ async function handleCreateTeam(args: {
     updated_at: now,
   };
   mockTeams.push(team);
-  return { ...team, persona_ids: [...team.persona_ids] };
+  return {
+    ...team,
+    persona_ids: [...team.persona_ids],
+    connected_agent_pubkeys: [...team.connected_agent_pubkeys],
+  };
 }
 
 async function handleUpdateTeam(args: {
@@ -7911,6 +7924,7 @@ async function handleUpdateTeam(args: {
     name: string;
     description?: string;
     personaIds: string[];
+    connectedAgentPubkeys?: string[];
   };
 }): Promise<RawTeam> {
   const team = mockTeams.find((candidate) => candidate.id === args.input.id);
@@ -7922,9 +7936,14 @@ async function handleUpdateTeam(args: {
   team.name = args.input.name.trim();
   team.description = args.input.description?.trim() || null;
   team.persona_ids = [...args.input.personaIds];
+  team.connected_agent_pubkeys = [...(args.input.connectedAgentPubkeys ?? [])];
   team.updated_at = new Date().toISOString();
 
-  return { ...team, persona_ids: [...team.persona_ids] };
+  return {
+    ...team,
+    persona_ids: [...team.persona_ids],
+    connected_agent_pubkeys: [...team.connected_agent_pubkeys],
+  };
 }
 
 async function handleDeleteTeam(args: { id: string }): Promise<void> {
@@ -7968,6 +7987,7 @@ async function handleInstallTeamFromDirectory(args: {
     name: "Installed Team",
     description: null,
     persona_ids: [],
+    connected_agent_pubkeys: [],
     is_builtin: false,
     source_dir: args.path,
     is_symlink: args.symlink,
@@ -7977,7 +7997,11 @@ async function handleInstallTeamFromDirectory(args: {
     updated_at: now,
   };
   mockTeams.push(team);
-  return { ...team, persona_ids: [...team.persona_ids] };
+  return {
+    ...team,
+    persona_ids: [...team.persona_ids],
+    connected_agent_pubkeys: [...team.connected_agent_pubkeys],
+  };
 }
 
 async function handleSyncTeamDirectory(args: { teamId: string }): Promise<{

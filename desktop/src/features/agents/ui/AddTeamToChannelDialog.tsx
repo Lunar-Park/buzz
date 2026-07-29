@@ -1,12 +1,14 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import * as React from "react";
 
+import type { CreateChannelManagedAgentsResult } from "@/features/agents/channelAgents";
 import {
+  relayAgentsQueryKey,
   useAvailableAcpRuntimes,
   useCreateChannelManagedAgentsMutation,
 } from "@/features/agents/hooks";
-import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
-import type { CreateChannelManagedAgentsResult } from "@/features/agents/channelAgents";
+import { resolveTeamConnectedAgents } from "@/features/agents/lib/teamConnectedAgents";
 import {
   emptyResolvedTeamPersonas,
   resolveTeamPersonas,
@@ -16,9 +18,13 @@ import {
   getDefaultPersonaRuntime,
   resolvePersonaRuntime,
 } from "@/features/agents/lib/resolvePersonaRuntime";
-import { useChannelsQuery } from "@/features/channels/hooks";
+import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
+import { channelsQueryKey, useChannelsQuery } from "@/features/channels/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import type { ConnectedAgent } from "@/shared/api/remoteAgentTypes";
+import { addChannelMembers } from "@/shared/api/tauri";
 import type {
+  AddChannelMembersResult,
   AgentPersona,
   AgentTeam,
   Channel,
@@ -36,21 +42,27 @@ import {
 type AddTeamToChannelDialogProps = {
   team: AgentTeam | null;
   personas: AgentPersona[];
+  connectedAgents: ConnectedAgent[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDeployed: (
-    channel: Channel,
-    result: CreateChannelManagedAgentsResult,
-  ) => void;
+  onDeployed: (channel: Channel, result: DeployTeamToChannelResult) => void;
+};
+
+export type DeployTeamToChannelResult = {
+  managed: CreateChannelManagedAgentsResult;
+  connected: AddChannelMembersResult;
+  requestedConnectedCount: number;
 };
 
 export function AddTeamToChannelDialog({
   team,
   personas,
+  connectedAgents,
   open,
   onOpenChange,
   onDeployed,
 }: AddTeamToChannelDialogProps) {
+  const queryClient = useQueryClient();
   const { globalConfig } = useGlobalAgentConfig();
   const channelsQuery = useChannelsQuery();
   const providersQuery = useAvailableAcpRuntimes();
@@ -59,6 +71,35 @@ export function AddTeamToChannelDialog({
   const deployMutation = useCreateChannelManagedAgentsMutation(
     channelId || null,
   );
+  const attachConnectedMutation = useMutation({
+    mutationFn: ({
+      selectedChannelId,
+      pubkeys,
+      selectedRole,
+    }: {
+      selectedChannelId: string;
+      pubkeys: string[];
+      selectedRole: Exclude<ChannelRole, "owner">;
+    }) =>
+      addChannelMembers({
+        channelId: selectedChannelId,
+        pubkeys,
+        role: selectedRole,
+      }),
+    onSettled: async (_data, _error, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: channelsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: relayAgentsQueryKey }),
+        ...(variables
+          ? [
+              queryClient.invalidateQueries({
+                queryKey: ["channels", variables.selectedChannelId, "members"],
+              }),
+            ]
+          : []),
+      ]);
+    },
+  });
 
   const channels = React.useMemo(
     () =>
@@ -69,24 +110,35 @@ export function AddTeamToChannelDialog({
   );
 
   const runtimes = providersQuery.data ?? [];
-  // Use the buzz-agent-first preference so the team-deploy fallback mirrors the
-  // single-agent start path (buzz-agent → goose → first available).
   const defaultProvider = getDefaultPersonaRuntime(
     runtimes,
     globalConfig.preferred_runtime,
   );
-
   const teamPersonaResolution = React.useMemo(
     () =>
       team ? resolveTeamPersonas(team, personas) : emptyResolvedTeamPersonas(),
     [team, personas],
   );
+  const connectedResolution = React.useMemo(
+    () =>
+      team
+        ? resolveTeamConnectedAgents(team, connectedAgents)
+        : {
+            hasMissingConnectedAgents: false,
+            missingConnectedAgentPubkeys: [],
+            resolvedConnectedAgents: [],
+          },
+    [connectedAgents, team],
+  );
   const resolved = teamPersonaResolution.resolvedPersonas;
+  const resolvedConnectedAgents = connectedResolution.resolvedConnectedAgents;
   const missingPersonaCount = teamPersonaResolution.missingPersonaCount;
+  const missingConnectedAgentCount =
+    connectedResolution.missingConnectedAgentPubkeys.length;
+  const totalAgentCount = resolved.length + resolvedConnectedAgents.length;
+  const isDeploying =
+    deployMutation.isPending || attachConnectedMutation.isPending;
 
-  // Surface warnings when a persona's preferred runtime is unavailable.
-  // This dialog has no runtime selector, so the fallback is always
-  // `defaultProvider` (the first available runtime).
   const runtimeWarnings = React.useMemo(
     () => collectRuntimeWarnings(resolved, runtimes, defaultProvider),
     [resolved, runtimes, defaultProvider],
@@ -96,6 +148,7 @@ export function AddTeamToChannelDialog({
     setChannelId("");
     setRole("bot");
     deployMutation.reset();
+    attachConnectedMutation.reset();
   }
 
   function handleOpenChange(next: boolean) {
@@ -106,10 +159,7 @@ export function AddTeamToChannelDialog({
   }
 
   React.useEffect(() => {
-    if (!open) {
-      return;
-    }
-    if (!channelId && channels.length > 0) {
+    if (open && !channelId && channels.length > 0) {
       setChannelId(channels[0].id);
     }
   }, [channelId, channels, open]);
@@ -118,15 +168,15 @@ export function AddTeamToChannelDialog({
     channels.find((channel) => channel.id === channelId) ?? null;
 
   async function handleDeploy() {
-    if (!team || !selectedChannel || !defaultProvider) {
+    if (
+      !team ||
+      !selectedChannel ||
+      (resolved.length > 0 && !defaultProvider)
+    ) {
       return;
     }
 
     try {
-      // Resolve each persona's preferred runtime. This dialog has no
-      // runtime selector, so the fallback is `defaultProvider` (first
-      // available runtime). Warnings are computed separately via the
-      // `runtimeWarnings` memo and rendered as inline alerts above.
       const inputs = resolved.map((persona) => {
         const { runtime: personaRuntime } = resolvePersonaRuntime(
           persona.runtime,
@@ -134,6 +184,11 @@ export function AddTeamToChannelDialog({
           defaultProvider,
         );
         const runtimeToUse = personaRuntime ?? defaultProvider;
+        if (!runtimeToUse) {
+          throw new Error(
+            `No runtime is available for ${persona.displayName}.`,
+          );
+        }
         return {
           runtime: {
             id: runtimeToUse.id,
@@ -148,17 +203,34 @@ export function AddTeamToChannelDialog({
           model: persona.model ?? undefined,
           personaId: persona.id,
           teamId: team.id,
-          // One persona can be deployed under multiple teams with different instructions.
           forceNewInstance: true,
           role,
         };
       });
 
-      const result = await deployMutation.mutateAsync(inputs);
-      onDeployed(selectedChannel, result);
+      const managed =
+        inputs.length > 0
+          ? await deployMutation.mutateAsync(inputs)
+          : { successes: [], failures: [] };
+      // Team membership events are replaceable. Finish the managed writes
+      // before one batch write for existing identities to avoid LWW loss.
+      const connected =
+        resolvedConnectedAgents.length > 0
+          ? await attachConnectedMutation.mutateAsync({
+              selectedChannelId: selectedChannel.id,
+              pubkeys: resolvedConnectedAgents.map((agent) => agent.pubkey),
+              selectedRole: role,
+            })
+          : { added: [], errors: [] };
+
+      onDeployed(selectedChannel, {
+        managed,
+        connected,
+        requestedConnectedCount: resolvedConnectedAgents.length,
+      });
       handleOpenChange(false);
     } catch {
-      // React Query stores the error; keep the dialog open.
+      // React Query stores mutation errors; keep the dialog open.
     }
   }
 
@@ -169,33 +241,33 @@ export function AddTeamToChannelDialog({
           <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-5 pr-14">
             <DialogTitle>Deploy team to channel</DialogTitle>
             <DialogDescription>
-              Create and attach one agent per member of{" "}
+              Create managed members and attach existing self-hosted members of{" "}
               <strong>{team?.name ?? "this team"}</strong> to the selected
               channel.
             </DialogDescription>
           </DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
-            {resolved.length > 0 ? (
+            {totalAgentCount > 0 ? (
               <div className="space-y-1.5">
                 <span className="text-sm font-medium">
-                  Agents ({resolved.length})
+                  Agents ({totalAgentCount})
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {resolved.map((persona) => (
-                    <div
-                      className="flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/30 px-2 py-1"
+                    <AgentChip
+                      avatarUrl={persona.avatarUrl}
                       key={persona.id}
-                    >
-                      <ProfileAvatar
-                        avatarUrl={persona.avatarUrl}
-                        className="h-5 w-5 text-2xs"
-                        label={persona.displayName}
-                      />
-                      <span className="text-xs font-medium">
-                        {persona.displayName}
-                      </span>
-                    </div>
+                      label={persona.displayName}
+                    />
+                  ))}
+                  {resolvedConnectedAgents.map((agent) => (
+                    <AgentChip
+                      avatarUrl={null}
+                      key={agent.pubkey}
+                      label={agent.name}
+                      suffix="self-hosted"
+                    />
                   ))}
                 </div>
               </div>
@@ -207,7 +279,7 @@ export function AddTeamToChannelDialog({
               </label>
               <select
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs"
-                disabled={channels.length === 0 || deployMutation.isPending}
+                disabled={channels.length === 0 || isDeploying}
                 id="team-channel-id"
                 onChange={(event) => setChannelId(event.target.value)}
                 value={channelId}
@@ -232,7 +304,7 @@ export function AddTeamToChannelDialog({
               </label>
               <select
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs"
-                disabled={deployMutation.isPending}
+                disabled={isDeploying}
                 id="team-channel-role"
                 onChange={(event) =>
                   setRole(event.target.value as Exclude<ChannelRole, "owner">)
@@ -246,44 +318,44 @@ export function AddTeamToChannelDialog({
               </select>
             </div>
 
-            {missingPersonaCount > 0 ? (
+            {missingPersonaCount + missingConnectedAgentCount > 0 ? (
               <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                This team references {missingPersonaCount} agent
-                {missingPersonaCount === 1 ? "" : "s"} that{" "}
-                {missingPersonaCount === 1 ? "is" : "are"} no longer in My
-                Agents. Add them back or edit the team before deploying.
+                This team references{" "}
+                {missingPersonaCount + missingConnectedAgentCount} unavailable
+                agent
+                {missingPersonaCount + missingConnectedAgentCount === 1
+                  ? ""
+                  : "s"}
+                . Add or reconnect them before deploying.
               </p>
             ) : null}
 
-            {!defaultProvider && !providersQuery.isLoading ? (
+            {resolved.length > 0 &&
+            !defaultProvider &&
+            !providersQuery.isLoading ? (
               <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                No ACP runtimes found. Make sure an agent runtime (e.g. Goose)
-                is installed.
+                No ACP runtimes found for this team&apos;s managed members.
               </p>
             ) : null}
 
-            {runtimeWarnings.length > 0
-              ? runtimeWarnings.map((warning) => (
-                  <div
-                    className="flex gap-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3"
-                    key={warning}
-                  >
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-                    <p className="text-sm text-warning">{warning}</p>
-                  </div>
-                ))
-              : null}
+            {runtimeWarnings.map((warning) => (
+              <div
+                className="flex gap-3 rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3"
+                key={warning}
+              >
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                <p className="text-sm text-warning">{warning}</p>
+              </div>
+            ))}
 
             {channelsQuery.error instanceof Error ? (
-              <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {channelsQuery.error.message}
-              </p>
+              <ErrorMessage message={channelsQuery.error.message} />
             ) : null}
-
             {deployMutation.error instanceof Error ? (
-              <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {deployMutation.error.message}
-              </p>
+              <ErrorMessage message={deployMutation.error.message} />
+            ) : null}
+            {attachConnectedMutation.error instanceof Error ? (
+              <ErrorMessage message={attachConnectedMutation.error.message} />
             ) : null}
           </div>
 
@@ -300,24 +372,57 @@ export function AddTeamToChannelDialog({
               disabled={
                 !team ||
                 !selectedChannel ||
-                !defaultProvider ||
-                resolved.length === 0 ||
+                (resolved.length > 0 && !defaultProvider) ||
+                totalAgentCount === 0 ||
                 missingPersonaCount > 0 ||
+                missingConnectedAgentCount > 0 ||
                 channelsQuery.isLoading ||
-                providersQuery.isLoading ||
-                deployMutation.isPending
+                (resolved.length > 0 && providersQuery.isLoading) ||
+                isDeploying
               }
               onClick={() => void handleDeploy()}
               size="sm"
               type="button"
             >
-              {deployMutation.isPending
+              {isDeploying
                 ? "Deploying..."
-                : `Deploy ${resolved.length} ${resolved.length === 1 ? "agent" : "agents"}`}
+                : `Deploy ${totalAgentCount} ${totalAgentCount === 1 ? "agent" : "agents"}`}
             </Button>
           </div>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function AgentChip({
+  avatarUrl,
+  label,
+  suffix,
+}: {
+  avatarUrl: string | null | undefined;
+  label: string;
+  suffix?: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/30 px-2 py-1">
+      <ProfileAvatar
+        avatarUrl={avatarUrl ?? null}
+        className="h-5 w-5 text-2xs"
+        label={label}
+      />
+      <span className="text-xs font-medium">{label}</span>
+      {suffix ? (
+        <span className="text-2xs text-muted-foreground">{suffix}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function ErrorMessage({ message }: { message: string }) {
+  return (
+    <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+      {message}
+    </p>
   );
 }

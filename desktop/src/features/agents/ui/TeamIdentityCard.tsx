@@ -3,6 +3,7 @@ import { Info, Link, Users } from "lucide-react";
 
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import type { AgentPersona } from "@/shared/api/types";
+import type { ConnectedAgent } from "@/shared/api/remoteAgentTypes";
 import { Card } from "@/shared/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { formatAgentModelLabel } from "@/features/agents/lib/formatAgentModelLabel";
@@ -16,6 +17,7 @@ type TeamIdentityCardProps = {
   isSymlink?: boolean;
   memberCount: number;
   personas: AgentPersona[];
+  connectedAgents: ConnectedAgent[];
   sourceDir?: string | null;
   symlinkTarget?: string | null;
   teamName: string;
@@ -32,12 +34,13 @@ export function TeamIdentityCard({
   isSymlink = false,
   memberCount,
   personas,
+  connectedAgents,
   sourceDir,
   symlinkTarget,
   teamName,
   version,
 }: TeamIdentityCardProps) {
-  const footerModelLabel = getTeamFooterModelLabel(personas);
+  const footerModelLabel = getTeamFooterModelLabel(personas, connectedAgents);
   const trimmedDescription = description?.trim();
 
   return (
@@ -87,6 +90,7 @@ export function TeamIdentityCard({
         <TeamAvatarRow
           memberCount={memberCount}
           personas={personas}
+          connectedAgents={connectedAgents}
           teamName={teamName}
         />
 
@@ -107,17 +111,30 @@ export function TeamIdentityCard({
 function TeamAvatarRow({
   memberCount,
   personas,
+  connectedAgents,
   teamName,
 }: {
   memberCount: number;
   personas: AgentPersona[];
+  connectedAgents: ConnectedAgent[];
   teamName: string;
 }) {
-  const visiblePersonas = personas.slice(0, MAX_VISIBLE_MEMBER_AVATARS);
-  const overflowCount = Math.max(0, memberCount - visiblePersonas.length);
-  const stackItemCount = visiblePersonas.length + (overflowCount > 0 ? 1 : 0);
+  const visibleMembers = [
+    ...personas.map((persona) => ({
+      id: persona.id,
+      label: persona.displayName,
+      avatarUrl: persona.avatarUrl,
+    })),
+    ...connectedAgents.map((agent) => ({
+      id: agent.pubkey,
+      label: agent.name,
+      avatarUrl: null,
+    })),
+  ].slice(0, MAX_VISIBLE_MEMBER_AVATARS);
+  const overflowCount = Math.max(0, memberCount - visibleMembers.length);
+  const stackItemCount = visibleMembers.length + (overflowCount > 0 ? 1 : 0);
 
-  if (visiblePersonas.length === 0 && overflowCount === 0) {
+  if (visibleMembers.length === 0 && overflowCount === 0) {
     return (
       <div className="absolute inset-x-4 top-0 bottom-12 flex items-center justify-center">
         <div className="flex h-24 w-24 items-center justify-center rounded-full border border-border/65 bg-background/80 text-muted-foreground shadow-xs">
@@ -134,17 +151,17 @@ function TeamAvatarRow({
         className="flex max-w-full items-center justify-center px-4"
         role="img"
       >
-        {visiblePersonas.map((persona, index) => (
+        {visibleMembers.map((member, index) => (
           <TeamAvatarItem
             index={index}
             isFollowedByAnother={index < stackItemCount - 1}
-            key={persona.id}
-            persona={persona}
+            key={member.id}
+            member={member}
           />
         ))}
         {overflowCount > 0 ? (
           <div
-            className={visiblePersonas.length > 0 ? "-ml-5" : ""}
+            className={visibleMembers.length > 0 ? "-ml-5" : ""}
             style={{ zIndex: stackItemCount }}
           >
             <span className="flex h-14 w-14 items-center justify-center rounded-full bg-card text-sm font-semibold text-muted-foreground">
@@ -160,13 +177,13 @@ function TeamAvatarRow({
 function TeamAvatarItem({
   index,
   isFollowedByAnother,
-  persona,
+  member,
 }: {
   index: number;
   isFollowedByAnother: boolean;
-  persona: AgentPersona;
+  member: { id: string; label: string; avatarUrl: string | null | undefined };
 }) {
-  const avatarUrl = persona.avatarUrl?.trim() ?? null;
+  const avatarUrl = member.avatarUrl?.trim() ?? null;
 
   return (
     <div
@@ -186,14 +203,14 @@ function TeamAvatarItem({
           avatarUrl={avatarUrl}
           className="h-full w-full bg-muted shadow-none"
           iconClassName="h-6 w-6"
-          label={persona.displayName}
-          testId={`team-member-avatar-${persona.id}`}
+          label={member.label}
+          testId={`team-member-avatar-${member.id}`}
         />
       ) : (
         <IdentityInitialsAvatar
           className="border-0 shadow-none"
           colorIndex={index}
-          label={persona.displayName}
+          label={member.label}
           size={56}
         />
       )}
@@ -201,7 +218,16 @@ function TeamAvatarItem({
   );
 }
 
-function getTeamFooterModelLabel(personas: AgentPersona[]) {
+function getTeamFooterModelLabel(
+  personas: AgentPersona[],
+  connectedAgents: ConnectedAgent[],
+) {
+  if (connectedAgents.length > 0 && personas.length === 0) {
+    return "Self-hosted";
+  }
+  if (connectedAgents.length > 0) {
+    return "Mixed runtimes";
+  }
   const modelLabels = personas
     .map((persona) => formatAgentModelLabel(persona.model))
     .filter((model): model is string => Boolean(model));

@@ -4,8 +4,9 @@ use uuid::Uuid;
 use crate::{
     app_state::AppState,
     managed_agents::{
-        delete_team_with_cascade, ensure_persona_ids_are_active, load_personas, load_teams,
-        save_teams, try_regenerate_nest, CreateTeamRequest, TeamRecord, UpdateTeamRequest,
+        delete_team_with_cascade, ensure_persona_ids_are_active, load_connected_agents,
+        load_personas, load_teams, save_teams, try_regenerate_nest, CreateTeamRequest, TeamRecord,
+        UpdateTeamRequest,
     },
     util::now_iso,
 };
@@ -23,6 +24,35 @@ fn trim_optional(value: Option<String>) -> Option<String> {
         let trimmed = candidate.trim();
         (!trimmed.is_empty()).then(|| trimmed.to_string())
     })
+}
+
+fn validate_connected_agent_pubkeys(
+    requested: Vec<String>,
+    connected: &[crate::managed_agents::ConnectedAgentRecord],
+) -> Result<Vec<String>, String> {
+    let available = connected
+        .iter()
+        .map(|agent| agent.pubkey.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let mut normalized = Vec::with_capacity(requested.len());
+    let mut seen = std::collections::HashSet::new();
+
+    for pubkey in requested {
+        let pubkey = pubkey.trim().to_lowercase();
+        if pubkey.len() != 64 || !pubkey.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(format!("Connected agent public key is invalid: {pubkey}"));
+        }
+        if !available.contains(pubkey.as_str()) {
+            return Err(format!(
+                "Connected agent {pubkey} is not connected on this device."
+            ));
+        }
+        if seen.insert(pubkey.clone()) {
+            normalized.push(pubkey);
+        }
+    }
+
+    Ok(normalized)
 }
 
 /// Retain a freshly authored team event in the local store, flagged for relay
@@ -156,6 +186,10 @@ pub async fn create_team(input: CreateTeamRequest, app: AppHandle) -> Result<Tea
             .map_err(|error| error.to_string())?;
         let personas = load_personas(&app)?;
         ensure_persona_ids_are_active(&personas, &input.persona_ids)?;
+        let connected_agent_pubkeys = validate_connected_agent_pubkeys(
+            input.connected_agent_pubkeys,
+            &load_connected_agents(&app)?,
+        )?;
         let mut teams = load_teams(&app)?;
         let team = TeamRecord {
             id: Uuid::new_v4().to_string(),
@@ -163,6 +197,7 @@ pub async fn create_team(input: CreateTeamRequest, app: AppHandle) -> Result<Tea
             description,
             instructions,
             persona_ids: input.persona_ids,
+            connected_agent_pubkeys,
             is_builtin: false,
             source_dir: None,
             is_symlink: false,
@@ -196,6 +231,10 @@ pub async fn update_team(input: UpdateTeamRequest, app: AppHandle) -> Result<Tea
             .map_err(|error| error.to_string())?;
         let personas = load_personas(&app)?;
         ensure_persona_ids_are_active(&personas, &input.persona_ids)?;
+        let connected_agent_pubkeys = validate_connected_agent_pubkeys(
+            input.connected_agent_pubkeys,
+            &load_connected_agents(&app)?,
+        )?;
         let mut teams = load_teams(&app)?;
         let team = teams
             .iter_mut()
@@ -206,6 +245,7 @@ pub async fn update_team(input: UpdateTeamRequest, app: AppHandle) -> Result<Tea
         team.description = description;
         team.instructions = instructions;
         team.persona_ids = input.persona_ids;
+        team.connected_agent_pubkeys = connected_agent_pubkeys;
         team.updated_at = now_iso();
 
         let updated = team.clone();
@@ -244,4 +284,41 @@ pub async fn delete_team(id: String, app: AppHandle) -> Result<(), String> {
     })
     .await
     .map_err(|e| format!("spawn_blocking failed: {e}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_connected_agent_pubkeys;
+    use crate::managed_agents::ConnectedAgentRecord;
+
+    const SELENE: &str = "4687f50de3a9e235e28eb58d68b0746062d7be6401bbf78a766bbd6f96ffe3c9";
+
+    fn connected(pubkey: &str) -> ConnectedAgentRecord {
+        ConnectedAgentRecord {
+            pubkey: pubkey.to_string(),
+            name: "Selene".to_string(),
+            host: "lunar01".to_string(),
+            harness: Some("openclaw".to_string()),
+            created_at: "2026-07-29T00:00:00Z".to_string(),
+            updated_at: "2026-07-29T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn connected_team_members_are_normalized_and_deduplicated() {
+        let normalized = validate_connected_agent_pubkeys(
+            vec![SELENE.to_uppercase(), SELENE.to_string()],
+            &[connected(SELENE)],
+        )
+        .unwrap();
+
+        assert_eq!(normalized, vec![SELENE.to_string()]);
+    }
+
+    #[test]
+    fn connected_team_members_must_be_configured_on_this_device() {
+        let error = validate_connected_agent_pubkeys(vec![SELENE.to_string()], &[]).unwrap_err();
+
+        assert!(error.contains("not connected on this device"));
+    }
 }

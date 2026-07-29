@@ -770,6 +770,8 @@ pub struct TeamRecord {
     pub instructions: Option<String>,
     pub persona_ids: Vec<String>,
     #[serde(default)]
+    pub connected_agent_pubkeys: Vec<String>,
+    #[serde(default)]
     pub is_builtin: bool,
     /// Absolute path to the team's backing directory (if directory-backed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -786,7 +788,6 @@ pub struct TeamRecord {
     pub created_at: String,
     pub updated_at: String,
 }
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateTeamRequest {
@@ -795,6 +796,8 @@ pub struct CreateTeamRequest {
     pub instructions: Option<String>,
     #[serde(default)]
     pub persona_ids: Vec<String>,
+    #[serde(default)]
+    pub connected_agent_pubkeys: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -806,6 +809,8 @@ pub struct UpdateTeamRequest {
     pub instructions: Option<String>,
     #[serde(default)]
     pub persona_ids: Vec<String>,
+    #[serde(default)]
+    pub connected_agent_pubkeys: Vec<String>,
 }
 
 pub const DEFAULT_ACP_COMMAND: &str = "buzz-acp";
