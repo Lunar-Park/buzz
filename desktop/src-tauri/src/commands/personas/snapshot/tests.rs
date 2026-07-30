@@ -709,9 +709,8 @@ fn import_allowlist_keep_with_valid_list_succeeds() {
     assert_eq!(minted.respond_to_allowlist, vec![raw]);
 }
 
-/// keep_allowlist = false on an allowlist-mode source with a non-empty list
-/// downgrades to the default mode and clears the allowlist. Fork: the
-/// default is Nobody — cleared agents stay silent until configured.
+/// keep_allowlist = false on an allowlist-mode source downgrades to the
+/// default mode (fork: Nobody — silent until configured) and clears the list.
 #[test]
 fn import_allowlist_clear_downgrades_to_default() {
     use crate::managed_agents::RespondTo;
