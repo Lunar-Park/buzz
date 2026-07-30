@@ -1,6 +1,7 @@
 import { invokeTauri } from "@/shared/api/tauri";
 import type {
   ConnectedAgent,
+  HarnessRosterResult,
   HostProbeResult,
   SshHost,
 } from "@/shared/api/remoteAgentTypes";
@@ -30,6 +31,40 @@ export async function probeAgentHost(host: string): Promise<HostProbeResult> {
  */
 export async function probeLocalAgentHost(): Promise<HostProbeResult> {
   return await invokeTauri<HostProbeResult>("probe_local_agent_host");
+}
+
+/**
+ * List the durable, named agents one harness holds on a host.
+ *
+ * The step after `probeAgentHost`: discovery says a harness is present, this
+ * says which agents it contains and which is its primary, so the user can
+ * enroll one, several, or none rather than the whole stack.
+ *
+ * Read-only — listing a roster starts nothing and changes no harness state. A
+ * harness Buzz cannot enumerate resolves with `supported: false`, which is a
+ * prompt for manual identity entry, not an error.
+ */
+export async function probeHarnessAgents(
+  host: string,
+  harness: string,
+): Promise<HarnessRosterResult> {
+  return await invokeTauri<HarnessRosterResult>("probe_harness_agents", {
+    host,
+    harness,
+  });
+}
+
+/**
+ * List the durable agents of a harness on this machine, shape-compatible with
+ * `probeHarnessAgents`.
+ */
+export async function probeLocalHarnessAgentRoster(
+  harness: string,
+): Promise<HarnessRosterResult> {
+  return await invokeTauri<HarnessRosterResult>(
+    "probe_local_harness_agent_roster",
+    { harness },
+  );
 }
 
 /** The self-hosted agents this machine is connected to. */
