@@ -21,10 +21,7 @@ import { TeamDeleteDialog } from "./TeamDeleteDialog";
 import { TeamDialog } from "./TeamDialog";
 import { ConnectAgentDialog } from "./ConnectAgentDialog";
 import { TeamsSection } from "./TeamsSection";
-import {
-  AGENT_CARD_GRID_COLUMNS_CLASS,
-  UnifiedAgentsSection,
-} from "./UnifiedAgentsSection";
+import { UnifiedAgentsSection } from "./UnifiedAgentsSection";
 import { useConnectedAgents } from "./useConnectedAgents";
 import { useManagedAgentActions } from "./useManagedAgentActions";
 import { usePersonaActions } from "./usePersonaActions";
