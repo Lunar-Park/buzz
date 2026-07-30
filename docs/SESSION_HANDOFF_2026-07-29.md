@@ -172,8 +172,18 @@ Wires both slices into the connect flow:
 
 Validation: 1970 Tauri tests, 3807 Desktop JavaScript tests, fmt, clippy, tsc,
 biome, both remaining guards, no new ratchet entry, and a passing production Vite
-build. The roster rules live in the pure intent module and are unit-tested; the
-rendered UI has **not** been visually verified — launch the app from
+build.
+
+**Live UI validation, 2026-07-30.** The build was launched from
+`/Users/dspury/Projects/buzz-rc5-roster` against the real owner identity
+(`6ff3b9d4…`, loaded from the integration instance's keyring service via
+`BUZZ_DEV_KEYRING_SERVICE` so no key was minted or moved). The roster picker was
+confirmed working in the running app: selecting the `openclaw` harness on
+`lunar01` listed its durable agents in the dropdown. That is the first live
+confirmation of the roster path end to end — probe, ssh roster query, parse,
+neutral candidate shape, and render.
+
+The remaining surfaces were still unverified at that point — launch the app from
 `/Users/dspury/Projects/buzz-rc5-roster` to see it.
 
 ### P1 host-side identity onboarding
