@@ -1,6 +1,7 @@
 import { invokeTauri } from "@/shared/api/tauri";
 import type {
   ConnectedAgent,
+  ConnectedAgentOwnerEvidence,
   HarnessRosterResult,
   HostProbeResult,
   SshHost,
@@ -93,6 +94,45 @@ export async function connectRemoteAgent(input: {
     name: input.name,
     harness: input.harness ?? null,
   });
+}
+
+/**
+ * Issue a NIP-OA owner attestation for a connected agent.
+ *
+ * Sign locally with the owner identity and return the tag for the user to install
+ * on the agent's host (`BUZZ_AUTH_TAG`, or `channels.buzz.authTag` for the
+ * OpenClaw plugin). Without it, an agent publishing `owner_only` cannot be added
+ * to a channel by its own owner, and a membership-required relay refuses its key
+ * outright.
+ *
+ * Signs but publishes nothing: the attestation only takes effect through the
+ * agent's own later events. The owner's secret never leaves this machine. Only
+ * agents with a connection record can be attested to — this is not a
+ * general-purpose owner signing oracle.
+ */
+export async function mintConnectedAgentOwnerEvidence(
+  pubkey: string,
+): Promise<ConnectedAgentOwnerEvidence> {
+  return await invokeTauri<ConnectedAgentOwnerEvidence>(
+    "mint_connected_agent_owner_evidence",
+    { pubkey },
+  );
+}
+
+/**
+ * Re-read an attestation Buzz already issued, or `null` if there is none.
+ *
+ * Separate from minting so re-showing the value does not sign a new one:
+ * re-minting is valid but yields a different signature, which a user comparing it
+ * against the tag already on the host cannot distinguish from a mismatch.
+ */
+export async function getConnectedAgentOwnerEvidence(
+  pubkey: string,
+): Promise<ConnectedAgentOwnerEvidence | null> {
+  return await invokeTauri<ConnectedAgentOwnerEvidence | null>(
+    "get_connected_agent_owner_evidence",
+    { pubkey },
+  );
 }
 
 /**

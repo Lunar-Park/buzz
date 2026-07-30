@@ -203,3 +203,118 @@ fn a_blank_host_is_refused() {
     assert!(resolve_connect_host("").is_err());
     assert!(resolve_connect_host("   ").is_err());
 }
+
+// ── owner attestation (P6) ───────────────────────────────────────────────────
+
+#[test]
+fn a_fresh_connect_carries_no_attestation() {
+    // Attestation is an explicit later step. Signing on every connect would use
+    // the owner key for agents the user only recorded and is not ready to expose.
+    let record = sample_record();
+    assert_eq!(record.owner_auth_tag, None);
+    assert_eq!(record.owner_auth_owner_pubkey, None);
+    assert_eq!(record.owner_auth_issued_at, None);
+}
+
+#[test]
+fn the_minted_tag_verifies_against_the_agent_and_resolves_to_the_owner() {
+    // The whole point: the relay accepts this tag only if it verifies against the
+    // *agent's* pubkey and yields an owner it can materialize. Verified with the
+    // same SDK entry point the relay itself calls.
+    let owner_keys = nostr::Keys::generate();
+    let evidence = build_owner_evidence(&owner_keys, AGENT_HEX, "2026-07-30T00:00:00Z")
+        .expect("attestation is issued");
+
+    let agent_pubkey = nostr::PublicKey::from_hex(AGENT_HEX).expect("agent pubkey parses");
+    let resolved = buzz_sdk_pkg::nip_oa::verify_auth_tag(&evidence.auth_tag, &agent_pubkey)
+        .expect("the relay's verifier accepts the tag");
+
+    assert_eq!(resolved.to_hex(), owner_keys.public_key().to_hex());
+    assert_eq!(evidence.owner_pubkey, owner_keys.public_key().to_hex());
+    assert_eq!(evidence.agent_pubkey, AGENT_HEX);
+    assert_eq!(evidence.issued_at, "2026-07-30T00:00:00Z");
+}
+
+#[test]
+fn the_tag_does_not_verify_against_a_different_agent() {
+    // Binding to the agent pubkey is what makes the tag inert on its own: holding
+    // it grants nothing without that agent's private key, which Buzz never has.
+    let owner_keys = nostr::Keys::generate();
+    let evidence = build_owner_evidence(&owner_keys, AGENT_HEX, "2026-07-30T00:00:00Z")
+        .expect("attestation is issued");
+
+    let other = nostr::Keys::generate().public_key();
+    assert!(
+        buzz_sdk_pkg::nip_oa::verify_auth_tag(&evidence.auth_tag, &other).is_err(),
+        "a tag must not vouch for an agent it was not issued to"
+    );
+}
+
+#[test]
+fn conditions_are_empty_rather_than_decorative() {
+    // The membership and channel-add paths verify only the signature and never
+    // evaluate a clause, so a `kind=` or `created_at<` value would read as a
+    // restriction while restricting nothing. If the relay ever enforces clauses
+    // on those paths, this test is the place that should force the decision.
+    let owner_keys = nostr::Keys::generate();
+    let evidence = build_owner_evidence(&owner_keys, AGENT_HEX, "2026-07-30T00:00:00Z")
+        .expect("attestation is issued");
+
+    assert_eq!(evidence.conditions, "");
+    let parsed: Vec<String> =
+        serde_json::from_str(&evidence.auth_tag).expect("tag is a JSON string array");
+    assert_eq!(parsed.len(), 4);
+    assert_eq!(parsed[0], "auth");
+    assert_eq!(parsed[2], "", "conditions element must be empty");
+}
+
+#[test]
+fn self_attestation_is_refused_by_name() {
+    // "Invalid pubkey" would not tell the user what they actually did.
+    let owner_keys = nostr::Keys::generate();
+    let own_hex = owner_keys.public_key().to_hex();
+
+    let error = build_owner_evidence(&owner_keys, &own_hex, "2026-07-30T00:00:00Z")
+        .expect_err("self-attestation must be refused");
+    assert!(error.contains("your own pubkey"), "{error}");
+}
+
+#[test]
+fn an_unparseable_agent_pubkey_is_reported_not_signed() {
+    let owner_keys = nostr::Keys::generate();
+    let error = build_owner_evidence(&owner_keys, "nonsense", "2026-07-30T00:00:00Z")
+        .expect_err("a bad pubkey must not be signed over");
+    assert!(error.contains("unparseable agent pubkey"), "{error}");
+}
+
+#[test]
+fn the_owner_secret_never_appears_in_the_issued_evidence() {
+    let owner_keys = nostr::Keys::generate();
+    let secret = owner_keys.secret_key().to_secret_hex();
+    let evidence = build_owner_evidence(&owner_keys, AGENT_HEX, "2026-07-30T00:00:00Z")
+        .expect("attestation is issued");
+
+    let json = serde_json::to_string(&evidence).expect("serialize");
+    assert!(!json.contains(&secret), "owner secret leaked into evidence");
+}
+
+#[test]
+fn re_minting_produces_a_distinct_signature() {
+    // BIP-340 signing is randomized, which is why the issued tag is stored rather
+    // than recomputed on demand: a user comparing a freshly minted tag against
+    // the one already installed on the host could not tell it from a mismatch.
+    let owner_keys = nostr::Keys::generate();
+    let first =
+        build_owner_evidence(&owner_keys, AGENT_HEX, "2026-07-30T00:00:00Z").expect("first mint");
+    let second =
+        build_owner_evidence(&owner_keys, AGENT_HEX, "2026-07-30T00:00:01Z").expect("second mint");
+
+    assert_ne!(first.auth_tag, second.auth_tag);
+
+    // Both remain valid — the point is that they are not interchangeable to a
+    // human reading two strings, not that either is wrong.
+    let agent_pubkey = nostr::PublicKey::from_hex(AGENT_HEX).expect("parses");
+    for tag in [&first.auth_tag, &second.auth_tag] {
+        assert!(buzz_sdk_pkg::nip_oa::verify_auth_tag(tag, &agent_pubkey).is_ok());
+    }
+}

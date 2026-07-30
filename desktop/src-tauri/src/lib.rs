@@ -816,6 +816,8 @@ pub fn run() {
             list_connected_agents,
             connect_remote_agent,
             disconnect_remote_agent,
+            mint_connected_agent_owner_evidence,
+            get_connected_agent_owner_evidence,
             list_managed_agents,
             list_managed_agent_runtimes,
             start_managed_agent_runtime,
