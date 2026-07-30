@@ -15,7 +15,8 @@
 use std::fs;
 
 use super::{
-    load_connected_agents_at, save_connected_agents_at, ConnectedAgentRecord, ConnectedAgentSummary,
+    load_connected_agents_at, normalize_community_url, save_connected_agents_at,
+    ConnectedAgentRecord, ConnectedAgentSummary,
 };
 use crate::managed_agents::ManagedAgentRecord;
 
@@ -29,6 +30,7 @@ fn connected(pubkey: &str, name: &str, host: &str) -> ConnectedAgentRecord {
         host: host.to_string(),
         harness: Some("claude".to_string()),
         harness_agent_id: None,
+        community: None,
         created_at: "2026-07-28T00:00:00Z".to_string(),
         updated_at: "2026-07-28T00:00:00Z".to_string(),
         owner_auth_tag: None,
@@ -322,4 +324,19 @@ fn the_summary_reports_evidence_as_a_flag_and_never_ships_the_tag() {
 
     let without = ConnectedAgentSummary::from(&connected(CONNECTED_HEX, "Scout", "lunar02"));
     assert!(!without.has_owner_evidence);
+}
+
+// ── community scoping (specification §4.2 item 1) ────────────────────────────
+
+#[test]
+fn community_comparison_ignores_trailing_slashes_and_case() {
+    // Three spellings of one community reach this code: what the user typed, what
+    // the workspace override holds, and what a record stored. Comparing raw
+    // strings would split one community into several. The matching rule itself
+    // lives in `connectedAgentScope.ts` with the surface that applies it; this
+    // pins the normalization both sides depend on.
+    assert_eq!(
+        normalize_community_url("  wss://Relay.Example.com/ "),
+        "wss://relay.example.com"
+    );
 }

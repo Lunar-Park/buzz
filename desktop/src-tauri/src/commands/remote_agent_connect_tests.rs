@@ -10,6 +10,7 @@ fn sample_record() -> ConnectedAgentRecord {
         "Scout",
         Some("claude".to_string()),
         Some("main".to_string()),
+        Some("ws://lunar01:3000".to_string()),
         "2026-07-28T00:00:00Z",
     )
 }
@@ -106,11 +107,13 @@ fn a_connected_record_stores_the_identity_and_the_host_and_nothing_else() {
     keys.sort_unstable();
 
     // `harness_agent_id` names which durable agent inside the harness this is —
-    // a routing key, not a spawn instruction. Every entry here is still either a
-    // public identity or a local label.
+    // a routing key, not a spawn instruction — and `community` records which
+    // relay the connection belongs to. Every entry here is still either a public
+    // identity or a local label.
     assert_eq!(
         keys,
         [
+            "community",
             "created_at",
             "harness",
             "harness_agent_id",
@@ -134,6 +137,7 @@ fn a_probeless_connect_stores_no_harness_key_at_all() {
         "lunar02",
         AGENT_HEX,
         "Scout",
+        None,
         None,
         None,
         "2026-07-28T00:00:00Z",

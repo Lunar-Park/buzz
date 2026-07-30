@@ -232,6 +232,14 @@ export type ConnectedAgent = {
   harness: string | null;
   /** Which durable agent inside that harness this identity is, e.g. `"main"`. */
   harnessAgentId: string | null;
+  /**
+   * Normalized relay URL of the community this connection belongs to.
+   *
+   * `null` means the record predates Buzz tracking it, and such a record stays
+   * visible in every community rather than vanishing — see
+   * `connectedAgentsForCommunity`.
+   */
+  community: string | null;
   createdAt: string;
   updatedAt: string;
   /**
