@@ -16,6 +16,7 @@ import {
   rememberPendingWelcomeChannel,
 } from "@/features/onboarding/welcome";
 import { forceFreshOnboarding } from "@/features/onboarding/devFreshOnboarding";
+import { welcomeExperienceEnabled } from "@/features/onboarding/forkGates";
 import { ensureWelcomeCanvas } from "@/features/onboarding/welcomeCanvas";
 import { ensureWelcomeTeam } from "@/features/onboarding/welcomeGuide";
 import { useProfileQuery } from "@/features/profile/hooks";
@@ -91,6 +92,36 @@ export async function initializeStarterChannels(
     } catch (error) {
       starterChannelsError = error;
       console.warn("Failed to initialize public starter channels.", error);
+    }
+
+    if (!welcomeExperienceEnabled()) {
+      // Fork: no private Welcome channel, team, canvas, or kickoff. Nothing
+      // synthetic goes into the channels cache — a stub Channel here (missing
+      // memberPubkeys etc.) crashes every consumer that iterates channels.
+      // Focus falls back to the first public starter channel.
+      const starterChannelList = starterChannels?.channels ?? [];
+      queryClient.setQueryData<Channel[]>(channelsQueryKey, (channels = []) => {
+        const ensuredIds = new Set(
+          starterChannelList.map((channel) => channel.id),
+        );
+        return [
+          ...starterChannelList,
+          ...channels.filter((channel) => !ensuredIds.has(channel.id)),
+        ];
+      });
+      await queryClient.invalidateQueries({ queryKey: channelsQueryKey });
+      const focusChannelId = focus ? starterChannelList[0]?.id : undefined;
+      if (starterChannelsError) {
+        return {
+          ok: false,
+          focusChannelId,
+          reason:
+            starterChannelsError instanceof Error
+              ? starterChannelsError.message
+              : "Failed to set up starter channels",
+        };
+      }
+      return { ok: true, focusChannelId };
     }
 
     const welcomeChannel = await ensureWelcomeChannel(
