@@ -273,7 +273,13 @@ export function ConnectAgentDialog({
               agentId={draft.harnessAgentId}
               disabled={isSubmitting}
               harness={draft.harness}
+              hasRosterSelection={Boolean(draft.harnessAgentId)}
               host={draft.host}
+              isPrimarySelected={rosterCandidates(draft.roster).some(
+                (candidate) =>
+                  candidate.agentId === draft.harnessAgentId &&
+                  candidate.isPrimary,
+              )}
               onUseIdentity={(pubkey) =>
                 setDraft((current) => ({ ...current, pubkey }))
               }
