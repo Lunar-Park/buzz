@@ -145,6 +145,7 @@ pub async fn connect_remote_agent(
     pubkey: String,
     name: String,
     harness: Option<String>,
+    harness_agent_id: Option<String>,
     app: AppHandle,
 ) -> Result<ConnectedAgentSummary, String> {
     tokio::task::spawn_blocking(move || {
@@ -155,6 +156,10 @@ pub async fn connect_remote_agent(
         let pubkey = normalize_agent_pubkey(&pubkey)?;
         let name = validate_connected_name(&name)?;
         let harness = harness.and_then(|value| {
+            let trimmed = value.trim().to_string();
+            (!trimmed.is_empty()).then_some(trimmed)
+        });
+        let harness_agent_id = harness_agent_id.and_then(|value| {
             let trimmed = value.trim().to_string();
             (!trimmed.is_empty()).then_some(trimmed)
         });
@@ -225,7 +230,7 @@ pub async fn connect_remote_agent(
         }
 
         let now = now_iso();
-        let record = connected_record(&host, &pubkey, &name, harness, &now);
+        let record = connected_record(&host, &pubkey, &name, harness, harness_agent_id, &now);
         let summary = ConnectedAgentSummary::from(&record);
 
         let mut connected = connected;
@@ -250,6 +255,7 @@ pub(crate) fn connected_record(
     pubkey: &str,
     name: &str,
     harness: Option<String>,
+    harness_agent_id: Option<String>,
     now: &str,
 ) -> ConnectedAgentRecord {
     ConnectedAgentRecord {
@@ -257,6 +263,7 @@ pub(crate) fn connected_record(
         name: name.to_string(),
         host: host.to_string(),
         harness,
+        harness_agent_id,
         created_at: now.to_string(),
         updated_at: now.to_string(),
         // Attestation is a separate, explicit step. Minting one here would sign

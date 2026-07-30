@@ -93,18 +93,6 @@ export type HostProbeResult = {
 export const LOCALHOST_HOST_ID = "__localhost__";
 
 /**
- * A self-hosted agent Buzz talks to but does not own: it runs on a machine the
- * user owns, supervises itself, and holds its own signing key.
- *
- * Deliberately **not** a `ManagedAgent`. That type carries `status`, `pid`,
- * `logPath`, `needsRestart`, and `startOnAppLaunch` — each one a claim about a
- * process Buzz supervises. A connected agent has none of those, and the narrow
- * shape is what makes "no start/stop button" a property of the type rather
- * than a rule a component has to remember. Connected agents are not part of
- * `listManagedAgents()` at all: they are a separate record type in a separate
- * store, so they cannot reach a surface that renders lifecycle controls.
- */
-/**
  * One durable, named agent a harness holds on a host.
  *
  * Harness-neutral on purpose. A resident harness may call these subagents
@@ -185,6 +173,18 @@ export type ConnectedAgentOwnerEvidence = {
   replacedPrevious: boolean;
 };
 
+/**
+ * A self-hosted agent Buzz talks to but does not own: it runs on a machine the
+ * user owns, supervises itself, and holds its own signing key.
+ *
+ * Deliberately **not** a `ManagedAgent`. That type carries `status`, `pid`,
+ * `logPath`, `needsRestart`, and `startOnAppLaunch` — each one a claim about a
+ * process Buzz supervises. A connected agent has none of those, and the narrow
+ * shape is what makes "no start/stop button" a property of the type rather
+ * than a rule a component has to remember. Connected agents are not part of
+ * `listManagedAgents()` at all: they are a separate record type in a separate
+ * store, so they cannot reach a surface that renders lifecycle controls.
+ */
 export type ConnectedAgent = {
   /** The agent's own pubkey, lowercase hex. Buzz holds only the public half. */
   pubkey: string;
@@ -197,6 +197,8 @@ export type ConnectedAgent = {
    * record of what was there — nothing in Buzz executes it.
    */
   harness: string | null;
+  /** Which durable agent inside that harness this identity is, e.g. `"main"`. */
+  harnessAgentId: string | null;
   createdAt: string;
   updatedAt: string;
   /**

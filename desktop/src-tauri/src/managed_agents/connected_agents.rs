@@ -68,6 +68,21 @@ pub struct ConnectedAgentRecord {
     /// executes it. `None` when the user connected without a completed probe.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub harness: Option<String>,
+    /// Which durable agent *inside* that harness this identity is, e.g.
+    /// `"main"` or `"astra"`.
+    ///
+    /// The harness's own routing key, recorded so the mapping from a Buzz pubkey
+    /// to exactly one harness agent is stored rather than implied. Without it,
+    /// picking a named agent out of a roster is cosmetic: two connected agents on
+    /// the same host would be indistinguishable, and the adapter's guarantee that
+    /// a reply is signed by the selected agent — never a parent or sibling — would
+    /// have nothing on the Buzz side to check against.
+    ///
+    /// `None` for an agent connected without a roster, which stays valid: the
+    /// harness may hold exactly one agent, or Buzz may not be able to enumerate
+    /// it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness_agent_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     /// NIP-OA owner attestation Buzz has issued for this agent, if any.
@@ -115,6 +130,8 @@ pub struct ConnectedAgentSummary {
     pub name: String,
     pub host: String,
     pub harness: Option<String>,
+    /// The harness's own routing key for this agent, when one was selected.
+    pub harness_agent_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     /// Whether Buzz has issued an owner attestation for this agent.
@@ -139,6 +156,7 @@ impl From<&ConnectedAgentRecord> for ConnectedAgentSummary {
             name: record.name.clone(),
             host: record.host.clone(),
             harness: record.harness.clone(),
+            harness_agent_id: record.harness_agent_id.clone(),
             created_at: record.created_at.clone(),
             updated_at: record.updated_at.clone(),
             has_owner_evidence: record.owner_auth_tag.is_some(),

@@ -5,6 +5,7 @@ import {
   connectRemoteAgent,
   listSshHosts,
   probeAgentHost,
+  probeHarnessAgents,
 } from "@/shared/api/remoteAgentApi";
 import type { ConnectedAgent, SshHost } from "@/shared/api/remoteAgentTypes";
 import { Button } from "@/shared/ui/button";
@@ -16,6 +17,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
+import { HarnessAgentPicker } from "./HarnessAgentPicker";
 import {
   canSubmitConnectAgent,
   connectAgentPayload,
@@ -23,7 +25,10 @@ import {
   harnessOptions,
   missingBuzzCli,
   nameInputMessage,
+  nameSuggestionForCandidate,
+  preselectedCandidateId,
   pubkeyInputMessage,
+  rosterCandidates,
 } from "./connectAgentIntent";
 
 const SELECT_CLASS =
@@ -96,6 +101,59 @@ export function ConnectAgentDialog({
         );
       });
   }, []);
+
+  const loadRoster = React.useCallback((host: string, harness: string) => {
+    if (!host || !harness) return;
+    setDraft((current) => ({
+      ...current,
+      isLoadingRoster: true,
+      roster: null,
+      harnessAgentId: "",
+    }));
+    void probeHarnessAgents(host, harness)
+      .then((roster) => {
+        setDraft((current) => {
+          // A stale roster must not overwrite a newer selection: the user may
+          // have switched host or harness while the ssh round trip was open.
+          if (current.host !== host || current.harness !== harness) {
+            return current;
+          }
+          const preselected = preselectedCandidateId(roster);
+          const candidate = rosterCandidates(roster).find(
+            (entry) => entry.agentId === preselected,
+          );
+          const suggestion = nameSuggestionForCandidate(
+            candidate,
+            current.name,
+            current.nameSuggestion,
+          );
+          return {
+            ...current,
+            roster,
+            isLoadingRoster: false,
+            harnessAgentId: preselected,
+            name: suggestion ?? current.name,
+            nameSuggestion: suggestion ?? current.nameSuggestion,
+          };
+        });
+      })
+      .catch(() => {
+        setDraft((current) =>
+          current.host === host && current.harness === harness
+            ? { ...current, roster: null, isLoadingRoster: false }
+            : current,
+        );
+      });
+  }, []);
+
+  // Ask for the roster when the harness changes. Read-only on the host, and it
+  // is what turns "this machine runs OpenClaw" into "which of its agents is
+  // this?" — so running it automatically costs nothing the user did not ask for
+  // by naming a harness.
+  React.useEffect(() => {
+    if (!open || !draft.host || !draft.harness) return;
+    loadRoster(draft.host, draft.harness);
+  }, [draft.harness, draft.host, loadRoster, open]);
 
   // Probe on host change only — deliberately not on every draft edit, which
   // would open an ssh connection per keystroke. The probe is what fills the
@@ -272,6 +330,8 @@ export function ConnectAgentDialog({
                   setDraft((current) => ({
                     ...current,
                     harness: event.target.value,
+                    roster: null,
+                    harnessAgentId: "",
                   }))
                 }
                 value={draft.harness}
@@ -290,6 +350,29 @@ export function ConnectAgentDialog({
               </p>
             </div>
           ) : null}
+
+          <HarnessAgentPicker
+            draft={draft}
+            disabled={isSubmitting}
+            onSelect={(agentId) =>
+              setDraft((current) => {
+                const candidate = rosterCandidates(current.roster).find(
+                  (entry) => entry.agentId === agentId,
+                );
+                const suggestion = nameSuggestionForCandidate(
+                  candidate,
+                  current.name,
+                  current.nameSuggestion,
+                );
+                return {
+                  ...current,
+                  harnessAgentId: agentId,
+                  name: suggestion ?? current.name,
+                  nameSuggestion: suggestion ?? current.nameSuggestion,
+                };
+              })
+            }
+          />
 
           {error ? (
             <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
