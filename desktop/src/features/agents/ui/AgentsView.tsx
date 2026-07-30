@@ -20,6 +20,8 @@ import { SecretRevealDialog } from "./SecretRevealDialog";
 import { TeamDeleteDialog } from "./TeamDeleteDialog";
 import { TeamDialog } from "./TeamDialog";
 import { ConnectAgentDialog } from "./ConnectAgentDialog";
+import { RemoveManagedAgentDialog } from "./RemoveManagedAgentDialog";
+import { remoteDeploymentEffects } from "./managedAgentRemovalIntent";
 import { TeamsSection } from "./TeamsSection";
 import { UnifiedAgentsSection } from "./UnifiedAgentsSection";
 import { useConnectedAgents } from "./useConnectedAgents";
@@ -30,6 +32,7 @@ import { useProfilePanel } from "@/shared/context/ProfilePanelContext";
 import { useBakedBuildEnvQuery } from "@/features/agents/hooks";
 import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
 import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
+import type { AgentPersona, ManagedAgent } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,
@@ -60,6 +63,31 @@ export function AgentsView() {
   function openUnifiedCreate() {
     personas.prepareCreate();
     setIsCreateDialogOpen(true);
+  }
+
+  // Stage one of the two-stage removal, from the card menu. A card with a
+  // linked instance has a real identity — that goes through the reversible
+  // archive dialog. A definition-only card has no key to preserve: built-ins
+  // deactivate (restorable from starter templates), customs keep the existing
+  // definition-delete confirmation.
+  const [removalTarget, setRemovalTarget] = React.useState<{
+    persona: AgentPersona;
+    linkedAgent: ManagedAgent;
+  } | null>(null);
+
+  function handleRemoveAgent(
+    persona: AgentPersona,
+    linkedAgent: ManagedAgent | undefined,
+  ) {
+    if (linkedAgent) {
+      setRemovalTarget({ persona, linkedAgent });
+      return;
+    }
+    if (persona.isBuiltIn) {
+      void personas.handleSetActive(persona, false, "library");
+      return;
+    }
+    personas.openDelete(persona);
   }
 
   function openAiDefaults(trigger: HTMLButtonElement | null) {
@@ -275,10 +303,7 @@ export function AgentsView() {
               onDuplicatePersona={personas.openDuplicate}
               onEditPersona={personas.openEdit}
               onSharePersona={personas.openShare}
-              onDeactivatePersona={(persona) => {
-                void personas.handleSetActive(persona, false, "library");
-              }}
-              onDeletePersona={personas.openDelete}
+              onRemoveAgent={handleRemoveAgent}
               onImportSnapshotFile={(fileBytes, fileName) => {
                 void personas.handleImportSnapshotFile(fileBytes, fileName);
               }}
@@ -425,6 +450,35 @@ export function AgentsView() {
           }
           submitLabel={personas.personaDialogState.submitLabel}
           title={personas.personaDialogState.title}
+        />
+      ) : null}
+      {removalTarget ? (
+        <RemoveManagedAgentDialog
+          agentName={
+            removalTarget.persona.displayName || removalTarget.linkedAgent.name
+          }
+          agentPubkey={removalTarget.linkedAgent.pubkey}
+          extraEffects={remoteDeploymentEffects(removalTarget.linkedAgent)}
+          onConfirmRemoval={() =>
+            agents.archiveAgentAndDetach(removalTarget.linkedAgent.pubkey)
+          }
+          onOpenChange={(open) => {
+            if (!open) setRemovalTarget(null);
+          }}
+          onRemoved={() => {
+            // A built-in definition would re-render its card (and the old
+            // menu's broken promise) without the instance; deactivate it so
+            // the removal is complete. Custom definitions stay: they are the
+            // user's own template, and the archived identity is separate.
+            if (removalTarget.persona.isBuiltIn) {
+              void personas.handleSetActive(
+                removalTarget.persona,
+                false,
+                "library",
+              );
+            }
+          }}
+          open
         />
       ) : null}
       {personas.personaToDelete ? (

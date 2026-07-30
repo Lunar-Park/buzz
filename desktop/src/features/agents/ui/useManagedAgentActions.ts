@@ -292,16 +292,25 @@ export function useManagedAgentActions() {
    * provider-backed agent stops only what runs locally, so the caller's
    * confirmation must not imply a remote deployment was torn down.
    */
+  /**
+   * The archive plus everything reversible removal promises: leave channels,
+   * drop the log view, refresh both agent lists. Throws on failure so the
+   * stage-one confirmation dialog can show the error where the user acted.
+   */
+  async function archiveAgentAndDetach(pubkey: string) {
+    await archiveManagedAgent(pubkey);
+    await removeAgentFromAllChannels(pubkey);
+    if (logAgentPubkey === pubkey) {
+      setLogAgentPubkey(null);
+    }
+    await queryClient.invalidateQueries({ queryKey: managedAgentsQueryKey });
+    await queryClient.invalidateQueries({ queryKey: archivedAgentsQueryKey });
+  }
+
   async function handleArchive(pubkey: string) {
     clearFeedback();
     try {
-      await archiveManagedAgent(pubkey);
-      await removeAgentFromAllChannels(pubkey);
-      if (logAgentPubkey === pubkey) {
-        setLogAgentPubkey(null);
-      }
-      await queryClient.invalidateQueries({ queryKey: managedAgentsQueryKey });
-      await queryClient.invalidateQueries({ queryKey: archivedAgentsQueryKey });
+      await archiveAgentAndDetach(pubkey);
     } catch (error) {
       setActionErrorMessage(
         error instanceof Error
@@ -431,6 +440,7 @@ export function useManagedAgentActions() {
       : null;
 
   return {
+    archiveAgentAndDetach,
     handleArchive,
     relayAgentsQuery,
     managedAgentsQuery,

@@ -15,6 +15,8 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 
+import { REMOVE_ACTION_LABEL } from "./managedAgentRemovalIntent";
+
 export function PersonaActionsMenu({
   isActionPending,
   isPending,
@@ -23,8 +25,7 @@ export function PersonaActionsMenu({
   onDuplicate,
   onEdit,
   onShare,
-  onDeactivate,
-  onDelete,
+  onRemove,
 }: {
   isActionPending: boolean;
   isPending: boolean;
@@ -37,8 +38,15 @@ export function PersonaActionsMenu({
     persona: AgentPersona,
     linkedAgent: ManagedAgent | undefined,
   ) => void;
-  onDeactivate: (persona: AgentPersona) => void;
-  onDelete: (persona: AgentPersona) => void;
+  /**
+   * The one removal entry point for every Buzz-owned agent, built-in or not.
+   * Stage one is reversible; the caller decides how to remove a card that has
+   * no linked instance (definition-only) versus one with a real identity.
+   */
+  onRemove: (
+    persona: AgentPersona,
+    linkedAgent: ManagedAgent | undefined,
+  ) => void;
 }) {
   const disabled = isActionPending || isPending;
   const canEdit = !persona.sourceTeam;
@@ -88,17 +96,10 @@ export function PersonaActionsMenu({
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             disabled={disabled}
-            onClick={() => {
-              if (persona.isBuiltIn) {
-                onDeactivate(persona);
-                return;
-              }
-
-              onDelete(persona);
-            }}
+            onClick={() => onRemove(persona, linkedAgent)}
           >
             <Trash2 className="h-4 w-4" />
-            Delete
+            {REMOVE_ACTION_LABEL}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
