@@ -7,6 +7,7 @@ import {
   connectAgentPayload,
   emptyConnectAgentDraft,
   harnessOptions,
+  identityOffer,
   missingBuzzCli,
   nameInputMessage,
   nameSuggestionForCandidate,
@@ -349,4 +350,72 @@ test("a name is suggested only while the field is untouched", () => {
   // Never overwrites something the user typed themselves.
   assert.equal(nameSuggestionForCandidate(astra, "My Agent", "main"), null);
   assert.equal(nameSuggestionForCandidate(undefined, "", ""), null);
+});
+
+// ── identity attribution ─────────────────────────────────────────────────────
+
+test("the harness identity is offered for its primary agent", () => {
+  assert.equal(
+    identityOffer({
+      hasRosterSelection: true,
+      isPrimarySelected: true,
+      resolvedPubkey: "a".repeat(64),
+      supported: true,
+    }),
+    "use-resolved",
+  );
+});
+
+test("the harness identity is NOT offered for a non-primary agent", () => {
+  // A harness reports one configured Buzz identity and it belongs to the
+  // primary. Offering it for a sibling would connect that agent under the
+  // primary's signing key — two visible agents sharing one key.
+  assert.equal(
+    identityOffer({
+      hasRosterSelection: true,
+      isPrimarySelected: false,
+      resolvedPubkey: "a".repeat(64),
+      supported: true,
+    }),
+    "generate",
+  );
+});
+
+test("with no roster to narrow it, the harness-level identity still applies", () => {
+  // A single-agent harness, or one Buzz cannot enumerate: the harness-level
+  // answer is the only meaningful one, so withholding it would send the user to
+  // fetch a pubkey that was already on screen.
+  assert.equal(
+    identityOffer({
+      hasRosterSelection: false,
+      isPrimarySelected: false,
+      resolvedPubkey: "a".repeat(64),
+      supported: true,
+    }),
+    "use-resolved",
+  );
+});
+
+test("an absent identity offers generation", () => {
+  assert.equal(
+    identityOffer({
+      hasRosterSelection: true,
+      isPrimarySelected: true,
+      resolvedPubkey: null,
+      supported: true,
+    }),
+    "generate",
+  );
+});
+
+test("an unreadable harness offers neither", () => {
+  assert.equal(
+    identityOffer({
+      hasRosterSelection: false,
+      isPrimarySelected: false,
+      resolvedPubkey: null,
+      supported: false,
+    }),
+    "unsupported",
+  );
 });
