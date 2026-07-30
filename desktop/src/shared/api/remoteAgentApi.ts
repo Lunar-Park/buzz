@@ -2,7 +2,9 @@ import { invokeTauri } from "@/shared/api/tauri";
 import type {
   ConnectedAgent,
   ConnectedAgentOwnerEvidence,
+  GeneratedHostIdentity,
   HarnessRosterResult,
+  HostIdentityResolution,
   HostProbeResult,
   SshHost,
 } from "@/shared/api/remoteAgentTypes";
@@ -65,6 +67,43 @@ export async function probeLocalHarnessAgentRoster(
   return await invokeTauri<HarnessRosterResult>(
     "probe_local_harness_agent_roster",
     { harness },
+  );
+}
+
+/**
+ * Read the Buzz identity a harness on `host` is configured to sign as.
+ *
+ * Read-only, and the first step of identity onboarding: it lets the user confirm a
+ * real value instead of going to find an npub. An `ok` result with no `pubkey` is
+ * the "no identity yet" answer that makes offering generation honest.
+ */
+export async function resolveHostAgentIdentity(
+  host: string,
+  harness: string,
+): Promise<HostIdentityResolution> {
+  return await invokeTauri<HostIdentityResolution>(
+    "resolve_host_agent_identity",
+    { host, harness },
+  );
+}
+
+/**
+ * Mint a Buzz identity for an agent **on its own host**.
+ *
+ * The one call in this module that writes to a remote machine — only invoke it
+ * from an explicit confirmation that names the host being changed.
+ *
+ * The secret never comes back: it is written to a mode-`0600` file on the host and
+ * only its public half and path are returned. An agent that already has a key at
+ * that path fails loudly rather than losing its identity.
+ */
+export async function generateHostAgentIdentity(
+  host: string,
+  agentId: string,
+): Promise<GeneratedHostIdentity> {
+  return await invokeTauri<GeneratedHostIdentity>(
+    "generate_host_agent_identity",
+    { host, agentId },
   );
 }
 
