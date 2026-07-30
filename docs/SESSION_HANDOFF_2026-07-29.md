@@ -244,16 +244,29 @@ sites changed. The archive timestamp sits on a wrapper so
 owner-only because an archived row can hold an inline nsec when the keyring is
 unreachable.
 
-Not built: the `Archived agents` surface, the stage-one confirmation, and the
-stage-two destructive confirmation. Nothing calls these commands from the UI yet,
-and `delete_managed_agent` remains wired to the existing single-step delete.
+**P2 UI — built (`e8f2877ce`).** A stage-one confirmation that loads the removal
+preview and lists only effects true for that agent, an `Archived agents` list with
+Restore, and a separate destructive confirmation reachable only from there. The
+wording and gating live in a tested intent module, including the required
+statement that permanent deletion cannot erase already-sent messages, relay audit
+history, or copies other clients hold. The archived list renders nothing while
+empty.
+
+`handleArchive` sits beside `handleDelete` rather than replacing it. Archiving a
+provider-backed agent stops only what runs locally, while `handleDelete` carries
+the remote-orphan warnings — swapping the destructive path over without moving
+those rules is how a live deployment gets orphaned silently.
+
+Remaining for P2: point the agent card's `Delete` menu item at stage one (which
+needs those remote-orphan rules moved across), and `Restore Buzz starter agents`
+from bundled templates.
 
 ### Still open after this session
 
 - The rendered UI for the roster picker, attestation dialog, and identity field
   is unit-tested but has not been visually verified.
-- P2's UI (above), including the wording that permanent deletion cannot erase
-  already-published events, relay audit history, or copies other clients hold.
+- P2's final wiring: the card menu still calls the single-step delete, so the
+  two-stage path is reachable only once that item is repointed.
 - Starter-template restoration (`Restore Buzz starter agents`) is unimplemented.
 - The OpenClaw adapter still serves one Buzz account, so multi-agent
   *communication* remains WP5A regardless of what Buzz can now enroll. Buzz-side

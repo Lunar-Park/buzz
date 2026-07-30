@@ -327,9 +327,12 @@ As of 2026-07-29:
 - Connected records are community-scoped (§4.2 item 1), so an agent appears only
   in the community it was connected in; records predating the field stay visible
   everywhere rather than being silently migrated.
-- Two-stage Buzz-managed removal (§4.1) has its storage and commands: archive is
-  reversible and publishes nothing, permanent deletion refuses any agent that is
-  not already archived. Its UI, and starter-template restoration, are open.
+- Two-stage Buzz-managed removal (§4.1) is implemented through its surfaces:
+  archive is reversible and publishes nothing, permanent deletion refuses any
+  agent that is not already archived, and both confirmations state their effects
+  including the network boundary permanent deletion cannot cross. Open: pointing
+  the existing card `Delete` action at stage one, and starter-template
+  restoration.
 - Durable harness-agent roster detection is implemented behind a
   harness-neutral candidate shape, with the primary preselected and the full
   roster returned. Selection UI and per-agent identity minting remain open, and
