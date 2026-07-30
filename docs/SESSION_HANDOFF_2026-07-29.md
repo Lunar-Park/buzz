@@ -176,12 +176,50 @@ build. The roster rules live in the pure intent module and are unit-tested; the
 rendered UI has **not** been visually verified — launch the app from
 `/Users/dspury/Projects/buzz-rc5-roster` to see it.
 
-Still open for P6: connected-agent records remain global rather than
-community-scoped (specification §4.2 item 1), and per-agent host-side identity
-generation (P1) is not implemented, so enrolling a second harness agent still
-needs a manually pasted pubkey. The OpenClaw adapter also still serves one
-account, so multi-agent *communication* remains WP5A regardless of what Buzz
-can now enroll.
+### P1 host-side identity onboarding
+
+```text
+heads  8a8f06d80 (backend + API), b90423ed0 (connect-flow UI)
+```
+
+- `resolve_host_agent_identity` reads the identity a harness is configured to
+  sign as. For OpenClaw that is `channels.buzz.agentPubkey`, which the plugin
+  already verifies its loaded key against at startup, so it answers §3.2 item 6
+  rather than guessing from a shell environment. Verified live against lunar01:
+  it returns the configured canary pubkey exactly. An unset config path is
+  reported as "no identity yet", not a failure.
+- `generate_host_agent_identity` runs `buzz keys generate --out` on the host.
+  The secret is written there at mode `0600`; only the public half and the path
+  return. `--stdout` and `--force` are never passed, so an agent with an existing
+  key fails loudly instead of losing its identity, and a reply that contained a
+  secret would abort rather than be quietly discarded.
+- Generation is the **only host write** in this surface and the only place
+  user-influenced text reaches a remote shell. `validate_identity_slug`
+  whitelists the agent id and refuses everything else rather than escaping;
+  quoting, injection, traversal, and `..` are covered, and the assembled command
+  is parse-checked with `sh -n`.
+- The connect dialog offers the resolved identity for one-click acceptance, or a
+  two-step confirmation naming the host before generating, and keeps manual entry
+  as the fallback.
+
+The generate path was **not** run live: it writes a key file to a host and needs
+its own approval. Everything else was.
+
+Validation across the P1 commits: 1992 Tauri tests (+22), 3807 Desktop JavaScript
+tests, fmt, clippy `-D warnings`, tsc, biome, both guards, no new ratchet entry,
+production Vite build.
+
+### Still open after this session
+
+- Connected-agent records remain global rather than community-scoped
+  (specification §4.2 item 1) — the reason Selene appears in both communities.
+- The rendered UI for the roster picker, attestation dialog, and identity field
+  is unit-tested but has not been visually verified.
+- The OpenClaw adapter still serves one Buzz account, so multi-agent
+  *communication* remains WP5A regardless of what Buzz can now enroll. Buzz-side
+  detection, selection, identity minting, and attestation are in place.
+- Gate C itself is unchanged and still needs an operator: remove the legacy
+  Selene from `dff91016…`, enable, send one mention, verify, restart, disable.
 
 ### Focused Buzz branches
 
