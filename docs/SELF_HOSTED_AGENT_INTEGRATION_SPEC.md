@@ -324,6 +324,12 @@ As of 2026-07-29:
   agent on a membership-required relay through owner delegation. Surfacing the
   attestation in the connect flow, and §4.2 item 1 per-community scoping, remain
   open.
+- Connected records are community-scoped (§4.2 item 1), so an agent appears only
+  in the community it was connected in; records predating the field stay visible
+  everywhere rather than being silently migrated.
+- Two-stage Buzz-managed removal (§4.1) has its storage and commands: archive is
+  reversible and publishes nothing, permanent deletion refuses any agent that is
+  not already archived. Its UI, and starter-template restoration, are open.
 - Durable harness-agent roster detection is implemented behind a
   harness-neutral candidate shape, with the primary preselected and the full
   roster returned. Selection UI and per-agent identity minting remain open, and

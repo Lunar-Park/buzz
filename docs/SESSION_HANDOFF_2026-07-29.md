@@ -209,12 +209,52 @@ Validation across the P1 commits: 1992 Tauri tests (+22), 3807 Desktop JavaScrip
 tests, fmt, clippy `-D warnings`, tsc, biome, both guards, no new ratchet entry,
 production Vite build.
 
+### Community scoping and two-stage removal
+
+```text
+heads  08d1349b2 (community scoping), 0cd511fec (two-stage removal)
+```
+
+**Community scoping (§4.2 item 1) — complete.** Connected records now carry the
+community they were connected in, stamped from Buzz's own active workspace relay
+rather than anything a caller asserts, and the surface shows only the ones that
+belong. A record with no community matches every community: those predate the
+field, so guessing would be a silent migration of existing connections. They stay
+visible until reconnected, which stamps the community. An unknown active community
+shows everything rather than nothing.
+
+The matching rule lives in one language. The first cut had it in Rust too, and
+clippy reported that copy as dead once the filter was applied at the consuming
+surface; the duplicate was removed rather than silenced.
+
+**Two-stage removal (P2) — backend complete, UI not built.**
+`archive_managed_agent` stops an agent and moves its record to
+`archived-agents.json`, keeping identity, key, and definition;
+`restore_archived_agent` moves it back; `permanently_delete_archived_agent` does
+the destructive work and refuses any pubkey that is not archived, which is the
+gate rather than a convenience check. `describe_managed_agent_removal` reports
+running state, team references, and key presence so a confirmation can name what
+it affects.
+
+Archiving moves the record rather than flagging it, for the same reason connected
+agents got their own store: `load_managed_agents` has 61 call sites and one missed
+filter would let a hidden agent be auto-started or republished. None of those 61
+sites changed. The archive timestamp sits on a wrapper so
+`ManagedAgentRecord`'s ~20 struct literals stay untouched. The store is written
+owner-only because an archived row can hold an inline nsec when the keyring is
+unreachable.
+
+Not built: the `Archived agents` surface, the stage-one confirmation, and the
+stage-two destructive confirmation. Nothing calls these commands from the UI yet,
+and `delete_managed_agent` remains wired to the existing single-step delete.
+
 ### Still open after this session
 
-- Connected-agent records remain global rather than community-scoped
-  (specification §4.2 item 1) — the reason Selene appears in both communities.
 - The rendered UI for the roster picker, attestation dialog, and identity field
   is unit-tested but has not been visually verified.
+- P2's UI (above), including the wording that permanent deletion cannot erase
+  already-published events, relay audit history, or copies other clients hold.
+- Starter-template restoration (`Restore Buzz starter agents`) is unimplemented.
 - The OpenClaw adapter still serves one Buzz account, so multi-agent
   *communication* remains WP5A regardless of what Buzz can now enroll. Buzz-side
   detection, selection, identity minting, and attestation are in place.
