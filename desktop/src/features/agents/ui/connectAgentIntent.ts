@@ -1,5 +1,7 @@
 import type {
+  HarnessRosterResult,
   HostProbeResult,
+  RemoteAgentCandidate,
   RemoteHarness,
 } from "@/shared/api/remoteAgentTypes";
 
@@ -17,6 +19,22 @@ export type ConnectAgentDraft = {
   harness: string;
   probe: HostProbeResult | null;
   isProbing: boolean;
+  /**
+   * Durable agents the selected harness reports, or `null` before a roster has
+   * been asked for. A harness Buzz cannot enumerate comes back with
+   * `supported: false`, which is a prompt for manual entry rather than an error.
+   */
+  roster: HarnessRosterResult | null;
+  isLoadingRoster: boolean;
+  /** The harness agent the user picked, e.g. `"main"`. Empty when none. */
+  harnessAgentId: string;
+  /**
+   * The last name this dialog suggested from a roster selection.
+   *
+   * Tracked so a later selection can replace a name the dialog itself filled in
+   * while still never overwriting one the user typed.
+   */
+  nameSuggestion: string;
 };
 
 export const emptyConnectAgentDraft: ConnectAgentDraft = {
@@ -26,6 +44,10 @@ export const emptyConnectAgentDraft: ConnectAgentDraft = {
   harness: "",
   probe: null,
   isProbing: false,
+  roster: null,
+  isLoadingRoster: false,
+  harnessAgentId: "",
+  nameSuggestion: "",
 };
 
 /**
@@ -131,12 +153,96 @@ export function canSubmitConnectAgent(draft: ConnectAgentDraft): boolean {
 export function connectAgentPayload(draft: ConnectAgentDraft) {
   if (!canSubmitConnectAgent(draft)) return null;
   const harness = draft.harness.trim();
+  const harnessAgentId = draft.harnessAgentId.trim();
   return {
     host: draft.host.trim(),
     pubkey: draft.pubkey.trim(),
     name: draft.name.trim(),
     harness: harness ? harness : null,
+    // Only meaningful alongside a harness: an agent id without the harness that
+    // scopes it does not identify anything.
+    harnessAgentId: harness && harnessAgentId ? harnessAgentId : null,
   };
+}
+
+/**
+ * Candidates worth offering, or `[]`.
+ *
+ * A failed or unsupported roster yields nothing rather than a partial list: half
+ * a roster reads as "these are the agents" and would hide the rest with no
+ * visible reason.
+ */
+export function rosterCandidates(
+  roster: HarnessRosterResult | null,
+): RemoteAgentCandidate[] {
+  if (!roster?.ok) return [];
+  return roster.candidates;
+}
+
+/**
+ * The candidate to preselect: the harness primary.
+ *
+ * Empty when the harness flags none, which is deliberate — inventing a
+ * preselection would enroll an agent Buzz guessed at. The specification's rule is
+ * "primary or `main`", and the backend already applies the `main` fallback, so
+ * anything still unflagged here genuinely has no primary.
+ */
+export function preselectedCandidateId(
+  roster: HarnessRosterResult | null,
+): string {
+  const primary = rosterCandidates(roster).find(
+    (candidate) => candidate.isPrimary,
+  );
+  return primary?.agentId ?? "";
+}
+
+/** Label for one candidate: its name, plus its id when they differ. */
+export function candidateLabel(candidate: RemoteAgentCandidate): string {
+  const suffix = candidate.isPrimary ? " · primary" : "";
+  return candidate.displayName === candidate.agentId
+    ? `${candidate.agentId}${suffix}`
+    : `${candidate.displayName} (${candidate.agentId})${suffix}`;
+}
+
+/**
+ * What to tell the user about a roster attempt, or `null` when the list speaks
+ * for itself.
+ *
+ * `supported: false` is not a failure and must not read as one: the host is fine
+ * and manual entry is the intended path, so a retry prompt would send the user
+ * after a problem that does not exist.
+ */
+export function rosterStatusMessage(
+  roster: HarnessRosterResult | null,
+): string | null {
+  if (!roster) return null;
+  if (!roster.supported) {
+    return "Buzz cannot list this harness's agents yet — enter the agent's identity below.";
+  }
+  if (!roster.ok) {
+    return roster.error ?? "Could not list this harness's agents.";
+  }
+  if (roster.candidates.length === 0) {
+    return "This harness reported no configured agents.";
+  }
+  return null;
+}
+
+/**
+ * Name to prefill from a roster selection, or `null` to leave the field alone.
+ *
+ * Never overwrites something the user typed: the field is theirs once touched,
+ * and a selection change silently renaming their agent would be worse than no
+ * prefill at all.
+ */
+export function nameSuggestionForCandidate(
+  candidate: RemoteAgentCandidate | undefined,
+  currentName: string,
+  previousSuggestion: string,
+): string | null {
+  if (!candidate) return null;
+  const untouched = !currentName.trim() || currentName === previousSuggestion;
+  return untouched ? candidate.displayName : null;
 }
 
 /**

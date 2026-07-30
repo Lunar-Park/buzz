@@ -87,12 +87,19 @@ export async function connectRemoteAgent(input: {
   pubkey: string;
   name: string;
   harness?: string | null;
+  /**
+   * Which durable agent inside that harness this identity is, e.g. `"main"`.
+   * The harness's own routing key, so the Buzz-pubkey-to-harness-agent mapping is
+   * stored rather than implied.
+   */
+  harnessAgentId?: string | null;
 }): Promise<ConnectedAgent> {
   return await invokeTauri<ConnectedAgent>("connect_remote_agent", {
     host: input.host,
     pubkey: input.pubkey,
     name: input.name,
     harness: input.harness ?? null,
+    harnessAgentId: input.harnessAgentId ?? null,
   });
 }
 

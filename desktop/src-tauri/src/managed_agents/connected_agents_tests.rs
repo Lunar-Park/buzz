@@ -28,6 +28,7 @@ fn connected(pubkey: &str, name: &str, host: &str) -> ConnectedAgentRecord {
         name: name.to_string(),
         host: host.to_string(),
         harness: Some("claude".to_string()),
+        harness_agent_id: None,
         created_at: "2026-07-28T00:00:00Z".to_string(),
         updated_at: "2026-07-28T00:00:00Z".to_string(),
         owner_auth_tag: None,
