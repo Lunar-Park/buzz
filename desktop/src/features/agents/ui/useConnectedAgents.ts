@@ -11,7 +11,12 @@ import type { Channel, ChannelRole } from "@/shared/api/types";
 import { channelsQueryKey } from "@/features/channels/hooks";
 import { relayAgentsQueryKey } from "@/features/agents/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
+import {
+  loadActiveCommunityId,
+  loadCommunities,
+} from "@/features/communities/communityStorage";
 import { connectedAgentMembershipAdded } from "./connectedAgentChannelIntent";
+import { connectedAgentsForCommunity } from "./connectedAgentScope";
 
 export const connectedAgentsQueryKey = ["connected-agents"] as const;
 
@@ -94,9 +99,28 @@ export function useConnectedAgentsQuery() {
  * There is deliberately no start/stop/restart action here to match: the
  * surface offers only what Buzz can actually do to an agent it does not own.
  */
+/**
+ * Relay URL of the community currently open, or `null` when it cannot be
+ * determined.
+ *
+ * Read from storage rather than threaded through props: the whole
+ * community-scoped subtree remounts on a community change (`AppReady key=…`), so
+ * a value read at mount is current for this mount's lifetime.
+ */
+function activeCommunityRelayUrl(): string | null {
+  const activeId = loadActiveCommunityId();
+  if (!activeId) return null;
+  return (
+    loadCommunities().find((community) => community.id === activeId)
+      ?.relayUrl ?? null
+  );
+}
+
 export function useConnectedAgents() {
   const queryClient = useQueryClient();
   const query = useConnectedAgentsQuery();
+  // Resolved once per mount: see `activeCommunityRelayUrl`.
+  const activeRelayUrl = React.useMemo(activeCommunityRelayUrl, []);
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [agentToAddToChannel, setAgentToAddToChannel] =
     React.useState<ConnectedAgent | null>(null);
@@ -143,7 +167,7 @@ export function useConnectedAgents() {
   );
 
   return {
-    agents: query.data ?? [],
+    agents: connectedAgentsForCommunity(query.data ?? [], activeRelayUrl),
     agentToAddToChannel,
     error: query.error instanceof Error ? query.error : null,
     isLoading: query.isLoading,

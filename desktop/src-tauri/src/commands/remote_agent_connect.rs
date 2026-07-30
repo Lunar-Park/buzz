@@ -230,7 +230,21 @@ pub async fn connect_remote_agent(
         }
 
         let now = now_iso();
-        let record = connected_record(&host, &pubkey, &name, harness, harness_agent_id, &now);
+        // The community is read here rather than passed in: it is Buzz's own
+        // active workspace relay, not something a caller should be able to
+        // assert.
+        let community = crate::managed_agents::normalize_community_url(
+            &crate::relay::relay_ws_url_with_override(&state),
+        );
+        let record = connected_record(
+            &host,
+            &pubkey,
+            &name,
+            harness,
+            harness_agent_id,
+            Some(community),
+            &now,
+        );
         let summary = ConnectedAgentSummary::from(&record);
 
         let mut connected = connected;
@@ -256,6 +270,7 @@ pub(crate) fn connected_record(
     name: &str,
     harness: Option<String>,
     harness_agent_id: Option<String>,
+    community: Option<String>,
     now: &str,
 ) -> ConnectedAgentRecord {
     ConnectedAgentRecord {
@@ -264,6 +279,7 @@ pub(crate) fn connected_record(
         host: host.to_string(),
         harness,
         harness_agent_id,
+        community,
         created_at: now.to_string(),
         updated_at: now.to_string(),
         // Attestation is a separate, explicit step. Minting one here would sign

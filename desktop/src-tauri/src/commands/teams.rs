@@ -300,6 +300,7 @@ mod tests {
             host: "lunar01".to_string(),
             harness: Some("openclaw".to_string()),
             harness_agent_id: Some("main".to_string()),
+            community: Some("ws://lunar01:3000".to_string()),
             created_at: "2026-07-29T00:00:00Z".to_string(),
             updated_at: "2026-07-29T00:00:00Z".to_string(),
             owner_auth_tag: None,
