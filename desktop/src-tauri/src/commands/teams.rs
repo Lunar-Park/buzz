@@ -301,6 +301,9 @@ mod tests {
             harness: Some("openclaw".to_string()),
             created_at: "2026-07-29T00:00:00Z".to_string(),
             updated_at: "2026-07-29T00:00:00Z".to_string(),
+            owner_auth_tag: None,
+            owner_auth_owner_pubkey: None,
+            owner_auth_issued_at: None,
         }
     }
 

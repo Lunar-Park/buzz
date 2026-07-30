@@ -70,6 +70,27 @@ pub struct ConnectedAgentRecord {
     pub harness: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// NIP-OA owner attestation Buzz has issued for this agent, if any.
+    ///
+    /// Not a secret and not a bearer credential: the signature covers the
+    /// *agent's* pubkey, so the tag is inert without the agent's private key —
+    /// which Buzz never holds. It is stored so the value can be re-shown for
+    /// transfer to the host without minting a second one; BIP-340 signing is
+    /// randomized, so re-minting yields a different (equally valid) tag and a
+    /// user comparing two of them has no way to tell which they installed.
+    ///
+    /// `Option` with a serde default so a store written before this field
+    /// existed loads unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_auth_tag: Option<String>,
+    /// Owner pubkey that signed [`Self::owner_auth_tag`], 64-char lowercase hex.
+    ///
+    /// Recorded separately so a tag minted under a since-replaced identity is
+    /// recognizable as stale rather than silently wrong.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_auth_owner_pubkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_auth_issued_at: Option<String>,
 }
 
 /// The connected-agent view handed to the frontend.
@@ -96,6 +117,16 @@ pub struct ConnectedAgentSummary {
     pub harness: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Whether Buzz has issued an owner attestation for this agent.
+    ///
+    /// A boolean, not the tag: the list surface needs to show whether the agent
+    /// is addressable, and shipping a signature to every row that renders a name
+    /// would put it in more places than the one screen that transfers it.
+    pub has_owner_evidence: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_auth_owner_pubkey: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_auth_issued_at: Option<String>,
 }
 
 impl From<&ConnectedAgentRecord> for ConnectedAgentSummary {
@@ -110,6 +141,9 @@ impl From<&ConnectedAgentRecord> for ConnectedAgentSummary {
             harness: record.harness.clone(),
             created_at: record.created_at.clone(),
             updated_at: record.updated_at.clone(),
+            has_owner_evidence: record.owner_auth_tag.is_some(),
+            owner_auth_owner_pubkey: record.owner_auth_owner_pubkey.clone(),
+            owner_auth_issued_at: record.owner_auth_issued_at.clone(),
         }
     }
 }

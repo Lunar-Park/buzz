@@ -259,7 +259,201 @@ pub(crate) fn connected_record(
         harness,
         created_at: now.to_string(),
         updated_at: now.to_string(),
+        // Attestation is a separate, explicit step. Minting one here would sign
+        // with the owner key on every connect, including the connects that only
+        // record an agent the user is not yet ready to expose.
+        owner_auth_tag: None,
+        owner_auth_owner_pubkey: None,
+        owner_auth_issued_at: None,
     }
+}
+
+/// Owner attestation for a connected agent, ready to install on its host.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectedAgentOwnerEvidence {
+    pub agent_pubkey: String,
+    pub owner_pubkey: String,
+    /// The NIP-OA `auth` tag as a JSON array string, exactly as the agent must
+    /// present it: `["auth","<owner>","<conditions>","<sig>"]`.
+    pub auth_tag: String,
+    /// Always empty in this release. See [`mint_connected_agent_owner_evidence`]
+    /// for why a narrower value would be misleading rather than safer.
+    pub conditions: String,
+    pub issued_at: String,
+    /// True when this replaced an attestation that was already on the record.
+    pub replaced_previous: bool,
+}
+
+/// Issue a NIP-OA owner attestation for a connected agent.
+///
+/// This is the missing link that makes a self-hosted agent *addressable* rather
+/// than merely visible. Two relay behaviours depend on the relay having
+/// materialized an `agent_owner_pubkey` for the agent:
+///
+/// - **Channel adds.** The relay enforces the target agent's
+///   `channel_add_policy` on any third-party add. `owner_only` — the safe
+///   default a resident agent should publish — requires the actor to *be* the
+///   materialized owner. With no owner on file the add is refused outright, so
+///   an owner cannot add its own connected agent to a channel. That is not a
+///   hypothetical: it is the error that blocked the first Gate C attempt.
+/// - **Closed-relay membership.** On a relay that requires membership, an
+///   agent's key is refused at NIP-42 regardless of channel membership. The
+///   delegation path admits an agent whose attested owner is a member, so the
+///   attestation also removes the need to grant a resident key its own
+///   membership row.
+///
+/// The relay materializes ownership when it sees the agent publish while
+/// presenting this tag — so the tag has to reach the *host*, which installs it
+/// as the adapter's auth tag (`BUZZ_AUTH_TAG`, or `channels.buzz.authTag` for
+/// the OpenClaw plugin). Buzz cannot install it: that would mean writing
+/// configuration on a machine it does not administer.
+///
+/// # Why `conditions` is empty
+///
+/// NIP-OA conditions can name `kind=` and `created_at` clauses, and scoping the
+/// delegation looks like the cautious choice. It is not, for this use: the
+/// membership and channel-add paths verify only the signature and never evaluate
+/// a clause — only the identity-archive handler enforces `created_at`. A
+/// `kind=9` clause would therefore restrict nothing while reading as a
+/// restriction, and a `created_at<` bound would read as an expiry that does not
+/// expire. An honest empty value beats a decorative one. Narrowing becomes
+/// meaningful once the relay enforces clauses on these paths, and that is a
+/// relay change, not a Desktop one.
+///
+/// # What this does not do
+///
+/// It transports no secret. The owner's key signs locally and never leaves the
+/// machine, and the tag itself is inert without the agent's private key — which
+/// Buzz has never held — so it is not a bearer credential. It also publishes
+/// nothing: no relay event is emitted here, because the attestation only takes
+/// effect through the agent's own future events.
+#[tauri::command]
+pub async fn mint_connected_agent_owner_evidence(
+    pubkey: String,
+    app: AppHandle,
+) -> Result<ConnectedAgentOwnerEvidence, String> {
+    tokio::task::spawn_blocking(move || {
+        let pubkey = normalize_agent_pubkey(&pubkey)?;
+        let state = app.state::<AppState>();
+
+        // Unlike connect, an unavailable identity is fatal here: there is no
+        // attestation without a signature, and recovery mode exists precisely to
+        // stop signing under an identity that is lost or inaccessible.
+        let owner_keys = state.signing_keys()?;
+        let owner_pubkey = owner_keys.public_key().to_hex();
+        if owner_pubkey == pubkey {
+            return Err(
+                "that is your own pubkey — an owner cannot attest to itself. Attest to the \
+                 agent's identity instead."
+                    .to_string(),
+            );
+        }
+
+        let _store_guard = state
+            .managed_agents_store_lock
+            .lock()
+            .map_err(|error| error.to_string())?;
+
+        // Only for an agent Buzz has actually recorded a connection to. Minting
+        // for an arbitrary key would let this become a general-purpose owner
+        // signing oracle, which is a much broader surface than "vouch for the
+        // agents I connected".
+        let mut connected = load_connected_agents(&app)?;
+        let Some(index) = connected.iter().position(|record| record.pubkey == pubkey) else {
+            return Err(
+                "that agent is not connected on this machine. Connect it first — Buzz only \
+                 attests to agents it has a connection record for."
+                    .to_string(),
+            );
+        };
+
+        let now = now_iso();
+        let mut evidence = build_owner_evidence(&owner_keys, &pubkey, &now)?;
+
+        let record = &mut connected[index];
+        evidence.replaced_previous = record.owner_auth_tag.is_some();
+        record.owner_auth_tag = Some(evidence.auth_tag.clone());
+        record.owner_auth_owner_pubkey = Some(evidence.owner_pubkey.clone());
+        record.owner_auth_issued_at = Some(now.clone());
+        record.updated_at = now;
+        save_connected_agents(&app, &connected)?;
+
+        Ok(evidence)
+    })
+    .await
+    .map_err(|error| format!("spawn_blocking failed: {error}"))?
+}
+
+/// Sign an owner attestation for `agent_pubkey_hex`.
+///
+/// A pure function so the properties that matter are testable without a Tauri app
+/// handle or a keyring: that the emitted tag verifies against the *agent's*
+/// pubkey and resolves to this owner, that conditions stay empty, and that
+/// self-attestation is refused with a message naming the actual mistake.
+pub(crate) fn build_owner_evidence(
+    owner_keys: &nostr::Keys,
+    agent_pubkey_hex: &str,
+    now: &str,
+) -> Result<ConnectedAgentOwnerEvidence, String> {
+    let owner_pubkey = owner_keys.public_key().to_hex();
+    if owner_pubkey == agent_pubkey_hex {
+        return Err(
+            "that is your own pubkey — an owner cannot attest to itself. Attest to the agent's \
+             identity instead."
+                .to_string(),
+        );
+    }
+    let agent_pubkey = nostr::PublicKey::from_hex(agent_pubkey_hex)
+        .map_err(|error| format!("unparseable agent pubkey: {error}"))?;
+    let auth_tag = buzz_sdk_pkg::nip_oa::compute_auth_tag(owner_keys, &agent_pubkey, "")
+        .map_err(|error| format!("could not sign the owner attestation: {error}"))?;
+    Ok(ConnectedAgentOwnerEvidence {
+        agent_pubkey: agent_pubkey_hex.to_string(),
+        owner_pubkey,
+        auth_tag,
+        conditions: String::new(),
+        issued_at: now.to_string(),
+        replaced_previous: false,
+    })
+}
+
+/// Re-read the owner attestation Buzz already issued for a connected agent.
+///
+/// Separate from minting so re-displaying the value for transfer does not sign a
+/// new one. Re-minting is valid but yields a different signature (BIP-340 signing
+/// is randomized), and a user comparing the tag on screen against the one already
+/// installed on the host would have no way to tell a fresh mint from a mismatch.
+#[tauri::command]
+pub async fn get_connected_agent_owner_evidence(
+    pubkey: String,
+    app: AppHandle,
+) -> Result<Option<ConnectedAgentOwnerEvidence>, String> {
+    tokio::task::spawn_blocking(move || {
+        let pubkey = normalize_agent_pubkey(&pubkey)?;
+        let state = app.state::<AppState>();
+        let _store_guard = state
+            .managed_agents_store_lock
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let connected = load_connected_agents(&app)?;
+        let Some(record) = connected.iter().find(|record| record.pubkey == pubkey) else {
+            return Err("that agent is not connected on this machine".to_string());
+        };
+        let Some(auth_tag) = record.owner_auth_tag.clone() else {
+            return Ok(None);
+        };
+        Ok(Some(ConnectedAgentOwnerEvidence {
+            agent_pubkey: record.pubkey.clone(),
+            owner_pubkey: record.owner_auth_owner_pubkey.clone().unwrap_or_default(),
+            auth_tag,
+            conditions: String::new(),
+            issued_at: record.owner_auth_issued_at.clone().unwrap_or_default(),
+            replaced_previous: false,
+        }))
+    })
+    .await
+    .map_err(|error| format!("spawn_blocking failed: {error}"))?
 }
 
 /// Forget a connected agent.
