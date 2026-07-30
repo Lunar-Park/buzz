@@ -81,6 +81,36 @@ b19fd1508  unify connected agents with normal agents and teams
 Do not rebase this branch before preserving the current manual test point and
 reviewing the eight new upstream commits.
 
+### RC5 harness-roster branch
+
+```text
+worktree  /Users/dspury/Projects/buzz-rc5-roster
+branch    lunar-park/rc5-harness-roster
+head      14103c14d
+base      b19fd1508 (the preserved integration test point)
+state     clean, local-only
+```
+
+Branched from the integration test point rather than committed onto it, so the
+documented manual test point stays byte-identical. Contains harness-neutral
+durable agent-roster detection: `probe_harness_agents` /
+`probe_local_harness_agent_roster`, a `ROSTER_RECIPES` table whose only current
+row runs `openclaw agents list --json`, and the neutral `RemoteAgentCandidate`
+shape. Primary selection implements the spec's "harness primary or `main`".
+
+Validation: 1958 Tauri tests (26 new), fmt, clippy `-D warnings`, `tsc`, biome,
+px-text, and pubkey-truncation all clean. The assembled remote command was run
+against lunar01 and returned both markers with all eight durable agents and
+`main` flagged default.
+
+**Gate finding:** `pnpm check`'s desktop file-size ratchet already fails on
+`b19fd1508` itself, byte-identically, with 17 entries. Its base is
+`76aeae7036` while the branch carries 13 commits of growth. RC4's recorded
+"all three `pnpm check` guards passed" was measured on the focused RC4 branch
+against `upstream/main`, where the base matched; it does not hold for the
+integration stack. Any PR cut from this lineage needs a rebase or a split
+before that guard can pass, and the RC5 commit adds no new entry.
+
 ### Focused Buzz branches
 
 All focused worktrees are clean, pushed, and match their `origin/*` refs:
