@@ -154,6 +154,37 @@ export type HarnessRosterResult = {
   candidates: RemoteAgentCandidate[];
 };
 
+/**
+ * A NIP-OA owner attestation issued for a connected agent, ready to install on
+ * the agent's host.
+ *
+ * This is what makes a self-hosted agent *addressable* rather than just visible.
+ * The relay materializes an owner for the agent when it sees the agent publish
+ * while presenting this tag, and two behaviours depend on that: an `owner_only`
+ * `channel_add_policy` will only accept an add from the materialized owner, and a
+ * membership-required relay admits an agent whose attested owner is a member.
+ *
+ * Not a secret and not a bearer credential — the signature covers the *agent's*
+ * pubkey, so the tag is inert without the agent's private key, which Buzz never
+ * holds. Buzz cannot install it either: that would mean writing configuration on
+ * a machine it does not administer.
+ */
+export type ConnectedAgentOwnerEvidence = {
+  agentPubkey: string;
+  ownerPubkey: string;
+  /** The `auth` tag as a JSON array string: `["auth","<owner>","<conditions>","<sig>"]`. */
+  authTag: string;
+  /**
+   * Always empty. The relay's membership and channel-add paths verify only the
+   * signature and never evaluate a clause, so a `kind=` or `created_at<` value
+   * would read as a restriction while restricting nothing.
+   */
+  conditions: string;
+  issuedAt: string;
+  /** True when this replaced an attestation already on the record. */
+  replacedPrevious: boolean;
+};
+
 export type ConnectedAgent = {
   /** The agent's own pubkey, lowercase hex. Buzz holds only the public half. */
   pubkey: string;
@@ -168,4 +199,13 @@ export type ConnectedAgent = {
   harness: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Whether Buzz has issued an owner attestation for this agent. A flag, not the
+   * tag: the list surface needs to know whether the agent is addressable, and the
+   * signature belongs only on the screen that transfers it.
+   */
+  hasOwnerEvidence: boolean;
+  /** Owner that signed the attestation — lets a tag from a replaced identity read as stale. */
+  ownerAuthOwnerPubkey?: string;
+  ownerAuthIssuedAt?: string;
 };

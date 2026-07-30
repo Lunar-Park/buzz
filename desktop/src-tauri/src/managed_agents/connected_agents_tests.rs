@@ -30,6 +30,9 @@ fn connected(pubkey: &str, name: &str, host: &str) -> ConnectedAgentRecord {
         harness: Some("claude".to_string()),
         created_at: "2026-07-28T00:00:00Z".to_string(),
         updated_at: "2026-07-28T00:00:00Z".to_string(),
+        owner_auth_tag: None,
+        owner_auth_owner_pubkey: None,
+        owner_auth_issued_at: None,
     }
 }
 
@@ -235,4 +238,87 @@ fn the_summary_is_a_lossless_projection_of_the_record() {
     assert_eq!(summary.harness, record.harness);
     assert_eq!(summary.created_at, record.created_at);
     assert_eq!(summary.updated_at, record.updated_at);
+}
+
+// ── owner attestation (P6) ───────────────────────────────────────────────────
+
+/// A record carrying an issued attestation.
+fn connected_with_evidence(pubkey: &str) -> ConnectedAgentRecord {
+    ConnectedAgentRecord {
+        owner_auth_tag: Some(r#"["auth","aa","","bb"]"#.to_string()),
+        owner_auth_owner_pubkey: Some("aa".repeat(32)),
+        owner_auth_issued_at: Some("2026-07-30T00:00:00Z".to_string()),
+        ..connected(pubkey, "Scout", "lunar02")
+    }
+}
+
+#[test]
+fn a_store_written_before_attestation_existed_still_loads() {
+    // The field arrived after users had connected agents. Loading their file must
+    // not fail, and must not invent evidence that was never issued.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("connected-agents.json");
+    let legacy = serde_json::json!([{
+        "pubkey": CONNECTED_HEX,
+        "name": "Scout",
+        "host": "lunar02",
+        "harness": "claude",
+        "created_at": "2026-07-28T00:00:00Z",
+        "updated_at": "2026-07-28T00:00:00Z"
+    }])
+    .to_string();
+    fs::write(&path, legacy).expect("write legacy store");
+
+    let records = load_connected_agents_at(&path).expect("legacy store loads");
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].owner_auth_tag, None);
+    assert_eq!(records[0].owner_auth_owner_pubkey, None);
+    assert_eq!(records[0].owner_auth_issued_at, None);
+}
+
+#[test]
+fn an_issued_attestation_survives_a_save_and_load() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("connected-agents.json");
+    let original = connected_with_evidence(CONNECTED_HEX);
+    save_connected_agents_at(&path, std::slice::from_ref(&original)).expect("save");
+
+    let loaded = load_connected_agents_at(&path).expect("load");
+    assert_eq!(loaded[0].owner_auth_tag, original.owner_auth_tag);
+    assert_eq!(
+        loaded[0].owner_auth_owner_pubkey,
+        original.owner_auth_owner_pubkey
+    );
+    assert_eq!(
+        loaded[0].owner_auth_issued_at,
+        original.owner_auth_issued_at
+    );
+}
+
+#[test]
+fn a_record_without_attestation_omits_the_fields_on_disk() {
+    // `skip_serializing_if` keeps the common row as small as it was, so a store
+    // from a user who never minted anything is byte-comparable to the old shape.
+    let json =
+        serde_json::to_string(&connected(CONNECTED_HEX, "Scout", "lunar02")).expect("serialize");
+    assert!(!json.contains("owner_auth_tag"), "{json}");
+    assert!(!json.contains("owner_auth_issued_at"), "{json}");
+}
+
+#[test]
+fn the_summary_reports_evidence_as_a_flag_and_never_ships_the_tag() {
+    // The list surface needs to know whether an agent is addressable. It does not
+    // need the signature, and shipping one to every row that renders a name would
+    // put it in more places than the single screen that transfers it.
+    let with = ConnectedAgentSummary::from(&connected_with_evidence(CONNECTED_HEX));
+    assert!(with.has_owner_evidence);
+    let json = serde_json::to_string(&with).expect("serialize summary");
+    assert!(
+        !json.contains(r#"["auth""#),
+        "tag leaked into summary: {json}"
+    );
+    assert!(!json.contains("authTag"), "{json}");
+
+    let without = ConnectedAgentSummary::from(&connected(CONNECTED_HEX, "Scout", "lunar02"));
+    assert!(!without.has_owner_evidence);
 }
