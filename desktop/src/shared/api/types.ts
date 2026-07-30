@@ -384,10 +384,11 @@ export type ManagedAgent = {
 
 /**
  * Inbound author gate mode. Mirrors `buzz-acp`'s `--respond-to` CLI flag.
- * `"nobody"` is supported by the harness but not surfaced through this API —
- * it's a heartbeat-only mode without a meaningful GUI use case.
+ * Fork: `"nobody"` (heartbeat-only, never responds to messages) is exposed
+ * and is the backend default for records without an explicit mode; the
+ * create/edit dropdown still offers only the three interactive modes.
  */
-export type RespondToMode = "owner-only" | "allowlist" | "anyone";
+export type RespondToMode = "nobody" | "owner-only" | "allowlist" | "anyone";
 
 export type BackendProviderCandidate = {
   id: string;

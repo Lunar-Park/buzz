@@ -1,3 +1,5 @@
+import type { RespondToMode } from "@/shared/api/types";
+
 export type TimelineReaction = {
   emoji: string;
   /** Custom (image) emoji URL from the reaction's NIP-30 `emoji` tag, if any. */
@@ -36,7 +38,7 @@ export type TimelineMessage = {
   /** For bot messages, the display name of the persona this bot was created from. */
   personaDisplayName?: string;
   /** For bot messages, the respond-to mode (who can interact with this bot). */
-  respondTo?: "owner-only" | "allowlist" | "anyone";
+  respondTo?: RespondToMode;
   time: string;
   body: string;
   parentId?: string | null;

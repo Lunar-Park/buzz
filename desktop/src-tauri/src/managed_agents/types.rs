@@ -839,15 +839,16 @@ fn default_record_active() -> bool {
 // Wire format is kebab-case (`owner-only`, `allowlist`, `anyone`) to match
 // the harness CLI vocabulary and the strings the GUI emits.
 //
-// `nobody` is intentionally NOT exposed here. The harness supports it, but
-// it's a heartbeat-only mode and the desktop has no surface for it.
+// `nobody` is a heartbeat-only mode — the agent never responds to messages
+// but can still run heartbeats for self-prompted tasks.
 
-/// Who the agent should respond to. Defaults to `OwnerOnly`, which matches
-/// the harness default → existing agents behave identically.
+/// Who the agent should respond to. Defaults to `Nobody` so agents only act
+/// when explicitly triggered (no auto-firing on messages).
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum RespondTo {
     #[default]
+    Nobody,
     OwnerOnly,
     Allowlist,
     Anyone,
@@ -857,6 +858,7 @@ impl RespondTo {
     /// CLI/env wire string (matches `buzz-acp`'s `--respond-to`).
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Nobody => "nobody",
             Self::OwnerOnly => "owner-only",
             Self::Allowlist => "allowlist",
             Self::Anyone => "anyone",
@@ -870,11 +872,12 @@ impl RespondTo {
     /// agent with a different audience than its author intended.
     pub fn parse_wire(value: &str) -> Result<Self, String> {
         match value {
+            "nobody" => Ok(Self::Nobody),
             "owner-only" => Ok(Self::OwnerOnly),
             "allowlist" => Ok(Self::Allowlist),
             "anyone" => Ok(Self::Anyone),
             other => Err(format!(
-                "definition respond_to '{other}' is not a recognized mode (expected 'owner-only', 'allowlist', or 'anyone')"
+                "definition respond_to '{other}' is not a recognized mode (expected 'nobody', 'owner-only', 'allowlist', or 'anyone')"
             )),
         }
     }
