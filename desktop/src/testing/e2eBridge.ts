@@ -2101,6 +2101,7 @@ function resetMockRelayAgents(config?: E2eConfig) {
 
 function resetMockManagedAgents(config?: E2eConfig) {
   mockManagedAgents = [];
+  mockArchivedAgents = [];
   mockManagedAgentRuntimes = (config?.mock?.managedAgentRuntimes ?? []).map(
     (seed) => ({
       pubkey: seed.pubkey,
@@ -2821,6 +2822,10 @@ let mockClosedChannelLiveSubscription = false;
 const realSockets = new Map<number, WebSocket>();
 let mockManagedAgents: MockManagedAgent[] = [];
 let mockManagedAgentRuntimes: MockManagedAgentRuntimeRow[] = [];
+// Two-stage removal (P2): archived rows keep the full record so a mocked
+// restore is a move back, mirroring the Rust store.
+let mockArchivedAgents: Array<{ archivedAt: string; agent: MockManagedAgent }> =
+  [];
 
 // Mutable `save_subscriptions` table mirror — TEST-ONLY.
 //
@@ -10819,6 +10824,74 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "list_managed_agents":
         return handleListManagedAgents(activeConfig);
+      case "list_connected_agents":
+        return [];
+      case "list_archived_agents":
+        return mockArchivedAgents.map((row) => ({
+          pubkey: row.agent.pubkey,
+          name: row.agent.name,
+          archivedAt: row.archivedAt,
+          retainsIdentity: true,
+        }));
+      case "describe_managed_agent_removal": {
+        const { pubkey } = payload as { pubkey: string };
+        const agent = mockManagedAgents.find((a) => a.pubkey === pubkey);
+        if (!agent) {
+          throw new Error(`agent ${pubkey} not found`);
+        }
+        return {
+          pubkey,
+          name: agent.name,
+          isRunning: agent.status === "running",
+          teamNames: mockTeams
+            .filter((team) =>
+              agent.persona_id
+                ? team.persona_ids.includes(agent.persona_id)
+                : false,
+            )
+            .map((team) => team.name),
+          hasLocalKey: true,
+        };
+      }
+      case "archive_managed_agent": {
+        const { pubkey } = payload as { pubkey: string };
+        const index = mockManagedAgents.findIndex((a) => a.pubkey === pubkey);
+        if (index === -1) {
+          throw new Error(`agent ${pubkey} not found`);
+        }
+        const [agent] = mockManagedAgents.splice(index, 1);
+        const archivedAt = new Date().toISOString();
+        mockArchivedAgents.push({ archivedAt, agent });
+        return {
+          pubkey: agent.pubkey,
+          name: agent.name,
+          archivedAt,
+          retainsIdentity: true,
+        };
+      }
+      case "restore_archived_agent": {
+        const { pubkey } = payload as { pubkey: string };
+        const index = mockArchivedAgents.findIndex(
+          (row) => row.agent.pubkey === pubkey,
+        );
+        if (index === -1) {
+          throw new Error(`agent ${pubkey} is not archived`);
+        }
+        const [row] = mockArchivedAgents.splice(index, 1);
+        mockManagedAgents.push(row.agent);
+        return null;
+      }
+      case "permanently_delete_archived_agent": {
+        const { pubkey } = payload as { pubkey: string };
+        const index = mockArchivedAgents.findIndex(
+          (row) => row.agent.pubkey === pubkey,
+        );
+        if (index === -1) {
+          throw new Error(`agent ${pubkey} is not archived`);
+        }
+        mockArchivedAgents.splice(index, 1);
+        return null;
+      }
       case "get_agent_memory":
         return handleGetAgentMemory(
           (payload as Parameters<typeof handleGetAgentMemory>[0]) ?? {},
