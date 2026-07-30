@@ -158,7 +158,9 @@ Note: `KIND_AUTH` (22242) is `pub const KIND_AUTH: u32` in `buzz-core/src/kind.r
 | Relay → Client | `["NOTICE", "message"]` | Informational message |
 | Relay → Client | `["AUTH", <challenge>]` | Authentication challenge |
 
-Max frame size: 65,536 bytes. Max subscriptions per connection: 1024. Max historical results per filter: 500.
+Default max frame size: 512 KiB (`BUZZ_MAX_FRAME_BYTES` can override it). Max
+subscriptions per connection: 1024. Max historical results per filter: 2,000.
+Event content has a separate 256 KiB ingest limit.
 
 ---
 
