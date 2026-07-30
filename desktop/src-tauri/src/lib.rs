@@ -566,9 +566,17 @@ pub fn run() {
 
             try_regenerate_nest(&app_handle);
 
-            if let Some(mgr) = huddle::models::global_model_manager() {
-                mgr.start_stt_download(state.http_client.clone());
-                mgr.start_tts_download(state.http_client.clone());
+            // Fork: voice (STT/TTS) models are ~100MB and are NOT fetched on
+            // every startup. They still download on-demand when huddle
+            // transcription is actually used. Set BUZZ_VOICE_MODEL_AUTODOWNLOAD=1
+            // to restore the upstream fetch-at-boot behavior.
+            if voice_model_autodownload_enabled(
+                std::env::var("BUZZ_VOICE_MODEL_AUTODOWNLOAD").ok().as_deref(),
+            ) {
+                if let Some(mgr) = huddle::models::global_model_manager() {
+                    mgr.start_stt_download(state.http_client.clone());
+                    mgr.start_tts_download(state.http_client.clone());
+                }
             }
 
             // Handle deep link URLs received while the app is running (macOS)
@@ -993,4 +1001,33 @@ pub fn run() {
         }
         _ => {}
     });
+}
+
+/// Whether boot-time voice (STT/TTS) model downloads are enabled.
+///
+/// Fork default is disabled; only an explicit `1` or `true` (from
+/// `BUZZ_VOICE_MODEL_AUTODOWNLOAD`) restores the upstream fetch-at-boot
+/// behavior. Models still download on-demand when transcription is used.
+fn voice_model_autodownload_enabled(value: Option<&str>) -> bool {
+    matches!(value.map(str::trim), Some("1") | Some("true"))
+}
+
+#[cfg(test)]
+mod voice_model_gate_tests {
+    use super::voice_model_autodownload_enabled;
+
+    #[test]
+    fn autodownload_is_disabled_by_default() {
+        assert!(!voice_model_autodownload_enabled(None));
+        assert!(!voice_model_autodownload_enabled(Some("")));
+        assert!(!voice_model_autodownload_enabled(Some("0")));
+        assert!(!voice_model_autodownload_enabled(Some("false")));
+    }
+
+    #[test]
+    fn autodownload_enables_on_explicit_opt_in() {
+        assert!(voice_model_autodownload_enabled(Some("1")));
+        assert!(voice_model_autodownload_enabled(Some("true")));
+        assert!(voice_model_autodownload_enabled(Some(" 1 ")));
+    }
 }
