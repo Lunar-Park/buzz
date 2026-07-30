@@ -18,6 +18,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { HarnessAgentPicker } from "./HarnessAgentPicker";
+import { HostIdentityField } from "./HostIdentityField";
 import {
   canSubmitConnectAgent,
   connectAgentPayload,
@@ -268,6 +269,15 @@ export function ConnectAgentDialog({
             >
               Agent identity
             </label>
+            <HostIdentityField
+              agentId={draft.harnessAgentId}
+              disabled={isSubmitting}
+              harness={draft.harness}
+              host={draft.host}
+              onUseIdentity={(pubkey) =>
+                setDraft((current) => ({ ...current, pubkey }))
+              }
+            />
             <Input
               autoComplete="off"
               disabled={isSubmitting}
