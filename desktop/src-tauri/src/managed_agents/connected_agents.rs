@@ -83,6 +83,22 @@ pub struct ConnectedAgentRecord {
     /// it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub harness_agent_id: Option<String>,
+    /// The Buzz community this connection belongs to, as a normalized relay
+    /// WebSocket URL.
+    ///
+    /// Buzz derives a community from its relay host, so a connected agent is only
+    /// meaningful inside the community whose relay its adapter actually listens
+    /// to. Without this field one record showed up in every community the user
+    /// had, including ones where the agent's key cannot even authenticate.
+    ///
+    /// `None` means "recorded before Buzz tracked this". Such a record stays
+    /// visible in every community rather than vanishing — guessing a community
+    /// for it would be a silent, unreviewable migration of the user's existing
+    /// connections. That display rule lives with the surface that applies it,
+    /// in `connectedAgentScope.ts`, so it exists once rather than in two
+    /// languages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub community: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     /// NIP-OA owner attestation Buzz has issued for this agent, if any.
@@ -132,6 +148,9 @@ pub struct ConnectedAgentSummary {
     pub harness: Option<String>,
     /// The harness's own routing key for this agent, when one was selected.
     pub harness_agent_id: Option<String>,
+    /// Normalized relay URL of the community this connection belongs to, or
+    /// `None` for a record made before Buzz tracked it.
+    pub community: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     /// Whether Buzz has issued an owner attestation for this agent.
@@ -157,6 +176,7 @@ impl From<&ConnectedAgentRecord> for ConnectedAgentSummary {
             host: record.host.clone(),
             harness: record.harness.clone(),
             harness_agent_id: record.harness_agent_id.clone(),
+            community: record.community.clone(),
             created_at: record.created_at.clone(),
             updated_at: record.updated_at.clone(),
             has_owner_evidence: record.owner_auth_tag.is_some(),
@@ -248,3 +268,13 @@ fn sort_for_stable_diffs(records: &mut [ConnectedAgentRecord]) {
 #[cfg(test)]
 #[path = "connected_agents_tests.rs"]
 mod tests;
+
+/// Normalize a relay URL so two spellings of one community compare equal.
+///
+/// Trailing slashes and casing differ between a URL the user typed, one the
+/// workspace override holds, and one a config file records. Comparing raw strings
+/// would split a single community into several and hide agents from the community
+/// they belong to.
+pub fn normalize_community_url(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_ascii_lowercase()
+}
