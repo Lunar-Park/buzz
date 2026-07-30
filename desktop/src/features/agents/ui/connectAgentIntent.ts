@@ -229,6 +229,47 @@ export function rosterStatusMessage(
 }
 
 /**
+ * Which identity affordance applies to the currently selected agent.
+ *
+ * The subtlety this exists for: a harness reports **one** configured Buzz
+ * identity, because today's adapter serves a single Buzz account. That identity
+ * belongs to the harness's primary agent. Offering it for any *other* roster
+ * candidate would connect that agent under the primary's signing key — two
+ * independently visible Buzz agents sharing one key, which the specification
+ * forbids outright.
+ *
+ * So a resolved identity is only offered when it can be attributed to the agent
+ * being connected:
+ *
+ * - `use-resolved` — the harness's identity, and the selection is its primary (or
+ *   there is no roster to narrow it, so the harness-level answer is the only
+ *   meaningful one).
+ * - `generate` — this agent has no identity of its own yet. True for every
+ *   non-primary candidate until the adapter supports an account per agent.
+ * - `unsupported` — Buzz cannot read this harness's identity; manual entry only.
+ */
+export type IdentityOffer = "use-resolved" | "generate" | "unsupported";
+
+export function identityOffer({
+  hasRosterSelection,
+  isPrimarySelected,
+  resolvedPubkey,
+  supported,
+}: {
+  hasRosterSelection: boolean;
+  isPrimarySelected: boolean;
+  resolvedPubkey: string | null;
+  supported: boolean;
+}): IdentityOffer {
+  if (!supported) return "unsupported";
+  if (!resolvedPubkey) return "generate";
+  // A selection that is not the primary cannot claim the harness's single
+  // configured identity.
+  if (hasRosterSelection && !isPrimarySelected) return "generate";
+  return "use-resolved";
+}
+
+/**
  * Name to prefill from a roster selection, or `null` to leave the field alone.
  *
  * Never overwrites something the user typed: the field is theirs once touched,

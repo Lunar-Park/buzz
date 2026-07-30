@@ -11,6 +11,8 @@ import type {
 } from "@/shared/api/remoteAgentTypes";
 import { Button } from "@/shared/ui/button";
 
+import { identityOffer } from "./connectAgentIntent";
+
 /**
  * Offer the agent's identity instead of asking the user to go and find it.
  *
@@ -31,13 +33,25 @@ export function HostIdentityField({
   agentId,
   disabled,
   harness,
+  hasRosterSelection,
   host,
+  isPrimarySelected,
   onUseIdentity,
 }: {
   agentId: string;
   disabled: boolean;
   harness: string;
+  /** Whether a specific roster agent is selected, rather than none. */
+  hasRosterSelection: boolean;
   host: string;
+  /**
+   * Whether that selection is the harness's primary agent.
+   *
+   * Load-bearing: a harness reports one configured Buzz identity, belonging to
+   * its primary. Offering it for a sibling would connect that agent under the
+   * primary's key.
+   */
+  isPrimarySelected: boolean;
   onUseIdentity: (pubkey: string) => void;
 }) {
   const [resolution, setResolution] =
@@ -94,6 +108,13 @@ export function HostIdentityField({
 
   if (!host || !harness) return null;
 
+  const offer = identityOffer({
+    hasRosterSelection,
+    isPrimarySelected,
+    resolvedPubkey: resolution?.pubkey ?? null,
+    supported: Boolean(resolution?.supported),
+  });
+
   if (isResolving) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -120,7 +141,7 @@ export function HostIdentityField({
             the agent&apos;s harness at that file.
           </p>
         </div>
-      ) : resolution?.pubkey ? (
+      ) : offer === "use-resolved" && resolution?.pubkey ? (
         <div className="space-y-2">
           <p className="text-sm font-medium">Identity found on {host}</p>
           <p className="font-mono text-2xs break-all text-muted-foreground">
