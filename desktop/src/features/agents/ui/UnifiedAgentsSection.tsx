@@ -26,6 +26,7 @@ import { IdentityCardSkeleton } from "@/shared/ui/identity-card-skeleton";
 import { AgentIdentityCard } from "./AgentIdentityCard";
 import { AgentRuntimeAvatarControl } from "./AgentRuntimeAvatarControl";
 import { CreateIdentityCard } from "./CreateIdentityCard";
+import { ArchivedAgentsSection } from "./ArchivedAgentsSection";
 import { ConnectedAgentCard } from "./ConnectedAgentsSection";
 import { PersonaActionsMenu } from "./PersonaActionsMenu";
 import { buildUnifiedGroups, pickProfileAgent } from "./unifiedAgentGroups";
@@ -252,6 +253,12 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
           ) : null}
         </div>
       ) : null}
+
+      {/* Renders nothing until something is archived, so the agents view carries
+          no permanent reminder of a state most users never enter. */}
+      <div className={AGENT_CARD_COLUMN_CLASS}>
+        <ArchivedAgentsSection />
+      </div>
 
       {agentsError ? (
         <p
