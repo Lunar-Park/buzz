@@ -104,6 +104,56 @@ export const LOCALHOST_HOST_ID = "__localhost__";
  * `listManagedAgents()` at all: they are a separate record type in a separate
  * store, so they cannot reach a surface that renders lifecycle controls.
  */
+/**
+ * One durable, named agent a harness holds on a host.
+ *
+ * Harness-neutral on purpose. A resident harness may call these subagents
+ * internally, but an enrolled candidate is a normal first-class Buzz agent and
+ * nothing here carries the harness's vocabulary beyond `harnessId`.
+ *
+ * Ephemeral per-turn workers are never candidates: their work stays attributed
+ * to the parent agent unless the harness later promotes them to durable, named
+ * agents.
+ */
+export type RemoteAgentCandidate = {
+  /** Harness that reported this agent, matching `RemoteHarness.id`. */
+  harnessId: string;
+  /**
+   * The harness's own agent identifier — the routing key. A reply must be
+   * produced by this exact agent, never a parent or sibling.
+   */
+  agentId: string;
+  /** Best available label; falls back to `agentId` for an unnamed primary. */
+  displayName: string;
+  /**
+   * True for the harness primary. The selector preselects it and leaves the
+   * rest of the roster visible but unselected — the whole stack is never
+   * enrolled automatically.
+   */
+  isPrimary: boolean;
+  model?: string;
+  workspace?: string;
+  /** Existing harness routing bindings. Informational; a bound agent is still enrollable. */
+  bindingCount?: number;
+};
+
+/** Outcome of listing one harness's durable agents. */
+export type HarnessRosterResult = {
+  host: string;
+  harnessId: string;
+  ok: boolean;
+  durationMs: number;
+  /**
+   * False when Buzz has no recipe for this harness — distinct from `ok: false`.
+   * Nothing is wrong with the host; offer manual identity entry rather than an
+   * error with a retry.
+   */
+  supported: boolean;
+  error?: string;
+  errorKind?: HostProbeErrorKind;
+  candidates: RemoteAgentCandidate[];
+};
+
 export type ConnectedAgent = {
   /** The agent's own pubkey, lowercase hex. Buzz holds only the public half. */
   pubkey: string;

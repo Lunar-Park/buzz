@@ -8,7 +8,10 @@
 //! a remote host, or collects a credential — the probe runs `command -v` and
 //! `--version` and nothing else.
 
-use crate::managed_agents::remote_probe::{probe_localhost, probe_ssh_host, HostProbeResult};
+use crate::managed_agents::remote_probe::{
+    probe_local_harness_agents, probe_localhost, probe_ssh_harness_agents, probe_ssh_host,
+    HarnessRosterResult, HostProbeResult,
+};
 use crate::managed_agents::ssh_config::{parse_ssh_config, SshHost};
 
 /// Enumerate the user's `~/.ssh/config` host aliases.
@@ -52,6 +55,49 @@ pub async fn probe_agent_host(host: String) -> Result<HostProbeResult, String> {
 #[tauri::command]
 pub async fn probe_local_agent_host() -> Result<HostProbeResult, String> {
     tokio::task::spawn_blocking(probe_localhost)
+        .await
+        .map_err(|e| format!("spawn_blocking failed: {e}"))
+}
+
+/// List the durable, named agents one harness holds on a host.
+///
+/// The step after [`probe_agent_host`]: discovery says a harness is present,
+/// this says which agents it contains and which is its primary, so the user can
+/// enroll one, several, or none rather than the whole stack.
+///
+/// `host` is resolved through `~/.ssh/config` for the same reason as the host
+/// probe — the alias carries the user's own `User`, `IdentityFile`, and
+/// `ProxyJump`, and re-resolving keeps an arbitrary string out of the `ssh`
+/// argv. `harness` selects a compiled-in recipe; an unrecognized value comes
+/// back as `supported: false`, which is not an error but a prompt to enter the
+/// agent's identity manually.
+///
+/// Read-only. Listing a roster starts nothing and changes no harness state.
+#[tauri::command]
+pub async fn probe_harness_agents(
+    host: String,
+    harness: String,
+) -> Result<HarnessRosterResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let hosts = parse_ssh_config();
+        let Some(entry) = hosts.into_iter().find(|candidate| candidate.host == host) else {
+            return Err(format!(
+                "'{host}' is not a Host alias in ~/.ssh/config; only configured hosts can be probed"
+            ));
+        };
+        Ok(probe_ssh_harness_agents(&entry, &harness))
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking failed: {e}"))?
+}
+
+/// List the durable agents of a harness on this machine, shape-compatible with
+/// [`probe_harness_agents`].
+#[tauri::command]
+pub async fn probe_local_harness_agent_roster(
+    harness: String,
+) -> Result<HarnessRosterResult, String> {
+    tokio::task::spawn_blocking(move || probe_local_harness_agents(&harness))
         .await
         .map_err(|e| format!("spawn_blocking failed: {e}"))
 }
