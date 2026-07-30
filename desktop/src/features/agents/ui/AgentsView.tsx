@@ -300,6 +300,9 @@ export function AgentsView() {
                 void connected.handleDisconnect(agent);
               }}
               onDiscoverPersonas={personas.openCatalog}
+              onRestoreStarterAgents={() => {
+                void personas.handleRestoreStarterAgents();
+              }}
               onDuplicatePersona={personas.openDuplicate}
               onEditPersona={personas.openEdit}
               onSharePersona={personas.openShare}

@@ -1,8 +1,16 @@
 use super::{
-    built_in_persona_records, ensure_persona_ids_are_active, ensure_persona_is_active,
-    merge_personas, migrate_retired_personas, validate_persona_activation_change,
-    validate_persona_deletion, BUILT_IN_PERSONAS, RETIRED_PERSONAS,
+    builtin_persona_pack, ensure_persona_ids_are_active, ensure_persona_is_active,
+    merge_personas_with, migrate_retired_personas, restore_builtin_personas_records,
+    validate_persona_activation_change, validate_persona_deletion, BUILT_IN_PERSONAS,
+    RETIRED_PERSONAS,
 };
+
+/// The upstream merge with the pack supplied explicitly: these tests verify
+/// merge semantics, not the fork's BUZZ_BUILTIN_PERSONAS gate, and passing the
+/// pack avoids racing the process-global env in parallel tests.
+fn merge_personas(stored: Vec<AgentDefinition>, now: &str) -> (Vec<AgentDefinition>, bool) {
+    merge_personas_with(stored, builtin_persona_pack(now), now)
+}
 use crate::managed_agents::discovery::{default_agent_command, effective_agent_command};
 use crate::managed_agents::AgentDefinition;
 
@@ -383,7 +391,7 @@ fn migrate_is_idempotent() {
 fn fizz_builtin_has_no_pinned_runtime() {
     // The Fizz built-in must not hard-pin a runtime so it inherits the
     // bundled default (buzz-agent) rather than requiring goose on PATH.
-    let records = built_in_persona_records("2026-01-01T00:00:00Z");
+    let records = builtin_persona_pack("2026-01-01T00:00:00Z");
     let fizz = records
         .iter()
         .find(|r| r.id == "builtin:fizz")
@@ -398,7 +406,7 @@ fn fizz_builtin_has_no_pinned_runtime() {
 fn fizz_builtin_resolves_to_buzz_agent() {
     // With no runtime pin, effective_agent_command must fall through to
     // default_agent_command(), which resolves the bundled buzz-agent.
-    let records = built_in_persona_records("2026-01-01T00:00:00Z");
+    let records = builtin_persona_pack("2026-01-01T00:00:00Z");
     assert_eq!(
         effective_agent_command(Some("builtin:fizz"), &records, None),
         default_agent_command(),
@@ -409,4 +417,45 @@ fn fizz_builtin_resolves_to_buzz_agent() {
         "buzz-agent",
         "Fizz must resolve to buzz-agent specifically"
     );
+}
+
+// ── Restore Buzz starter agents (P2) ─────────────────────────────────────────
+//
+// The gate stays unset in this process for these tests: restoring must work
+// exactly when the automatic merge is disabled.
+
+#[test]
+fn restore_adds_the_full_pack_to_an_empty_library_despite_the_gate() {
+    std::env::remove_var("BUZZ_BUILTIN_PERSONAS");
+    let (records, restored) = restore_builtin_personas_records(Vec::new(), "2026-07-30T00:00:00Z");
+
+    assert_eq!(restored, BUILT_IN_PERSONAS.len());
+    assert_eq!(records.len(), BUILT_IN_PERSONAS.len());
+    assert!(records.iter().all(|r| r.is_builtin && r.is_active));
+}
+
+#[test]
+fn restore_reactivates_a_deactivated_copy() {
+    std::env::remove_var("BUZZ_BUILTIN_PERSONAS");
+    let (mut records, _) = restore_builtin_personas_records(Vec::new(), "2026-07-30T00:00:00Z");
+    records[0].is_active = false;
+
+    let (records, restored) = restore_builtin_personas_records(records, "2026-07-30T01:00:00Z");
+    assert_eq!(restored, 1);
+    assert!(records.iter().all(|r| r.is_active));
+}
+
+#[test]
+fn restore_is_idempotent_and_leaves_custom_personas_alone() {
+    std::env::remove_var("BUZZ_BUILTIN_PERSONAS");
+    let custom = custom_persona("custom:mine", "Mine");
+    let (records, _) = restore_builtin_personas_records(vec![custom], "2026-07-30T00:00:00Z");
+
+    let (records, restored) = restore_builtin_personas_records(records, "2026-07-30T01:00:00Z");
+    assert_eq!(restored, 0, "second restore must be a no-op");
+    let custom_after = records
+        .iter()
+        .find(|r| r.id == "custom:mine")
+        .expect("custom persona must survive restores");
+    assert!(!custom_after.is_builtin);
 }

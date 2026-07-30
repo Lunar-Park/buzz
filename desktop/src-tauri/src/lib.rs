@@ -552,10 +552,8 @@ pub fn run() {
 
             try_regenerate_nest(&app_handle);
 
-            // Fork: voice (STT/TTS) models are ~100MB and are NOT fetched on
-            // every startup. They still download on-demand when huddle
-            // transcription is actually used. Set BUZZ_VOICE_MODEL_AUTODOWNLOAD=1
-            // to restore the upstream fetch-at-boot behavior.
+            // Fork: no ~100MB voice-model fetch at boot; models download
+            // on-demand when transcription is used. See fork_gates.
             if fork_gates::voice_model_autodownload_enabled(
                 std::env::var("BUZZ_VOICE_MODEL_AUTODOWNLOAD")
                     .ok()
@@ -843,6 +841,7 @@ pub fn run() {
             discover_backend_providers,
             probe_backend_provider,
             list_personas,
+            restore_builtin_personas,
             create_persona,
             update_persona,
             update_persona_and_publish,

@@ -37,6 +37,7 @@ import { personaSaveNotice } from "@/features/agents/lib/personaSaveNotice";
 import { useCreatedAgentChannelAttachment } from "@/features/agents/useCreatedAgentChannelAttachment";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { restoreBuiltinPersonas } from "@/shared/api/tauriPersonas";
 import type {
   SnapshotFormat,
   SnapshotMemoryLevel,
@@ -446,6 +447,30 @@ export function usePersonaActions() {
     setPersonaToDelete(persona);
   }
 
+  /**
+   * P2: `Restore Buzz starter agents`. Re-adds/reactivates the bundled
+   * starter pack; states plainly when there was nothing to restore rather
+   * than succeeding silently.
+   */
+  async function handleRestoreStarterAgents() {
+    clearFeedback("library");
+    try {
+      const restored = await restoreBuiltinPersonas();
+      await queryClient.invalidateQueries({ queryKey: personasQueryKey });
+      setPersonaNoticeMessage(
+        restored > 0
+          ? `Restored ${restored} Buzz starter agent${restored === 1 ? "" : "s"}.`
+          : "All Buzz starter agents are already in My Agents.",
+      );
+    } catch (error) {
+      setPersonaErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to restore Buzz starter agents.",
+      );
+    }
+  }
+
   function openShare(
     persona: AgentPersona,
     linkedAgent: ManagedAgent | undefined,
@@ -589,6 +614,7 @@ export function usePersonaActions() {
     ...createdAgentAttachment,
     handleSubmit,
     handleDelete,
+    handleRestoreStarterAgents,
     handleSetActive,
     prepareCreate,
     openEdit,
