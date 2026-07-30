@@ -5,6 +5,7 @@ pub(crate) mod team_snapshot;
 pub(crate) use agent_env::{
     baked_build_env, build_buzz_agent_provider_defaults, discovery_env_with_baked_floor,
 };
+mod archived_agents;
 mod backend;
 pub(crate) mod config_bridge;
 mod connected_agents;
@@ -49,6 +50,9 @@ pub(crate) fn lock_path_mutex() -> std::sync::MutexGuard<'static, ()> {
     PATH_MUTEX.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+pub(crate) use archived_agents::{
+    load_archived_agents, save_archived_agents, ArchivedAgentRecord, ArchivedAgentSummary,
+};
 pub use backend::*;
 pub(crate) use connected_agents::{
     load_connected_agents, normalize_community_url, save_connected_agents, ConnectedAgentRecord,

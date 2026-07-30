@@ -252,3 +252,38 @@ export type ConnectedAgent = {
   ownerAuthOwnerPubkey?: string;
   ownerAuthIssuedAt?: string;
 };
+
+/**
+ * An agent Buzz owns that has been removed from normal surfaces but kept
+ * recoverable — stage one of the two-stage removal.
+ *
+ * Archiving retains the identity, key, and definition, so restoring is a move
+ * rather than a rebuild. Nothing is published: a tombstone would tell the whole
+ * relay the agent is gone, which is not true yet and is not undone by restoring a
+ * local record.
+ */
+export type ArchivedAgent = {
+  pubkey: string;
+  name: string;
+  archivedAt: string;
+  /**
+   * Whether this row still represents a recoverable identity. True for every
+   * archived instance by construction — not a keyring liveness probe.
+   */
+  retainsIdentity: boolean;
+};
+
+/**
+ * What removing a Buzz-owned agent would affect, so a confirmation can name it.
+ *
+ * "Are you sure?" is not answerable without knowing whether the agent is running
+ * and which teams lose a member.
+ */
+export type ManagedAgentRemovalPreview = {
+  pubkey: string;
+  name: string;
+  isRunning: boolean;
+  teamNames: string[];
+  /** Signing material a later permanent delete would destroy. */
+  hasLocalKey: boolean;
+};
