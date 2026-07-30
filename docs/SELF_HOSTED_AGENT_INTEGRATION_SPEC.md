@@ -146,6 +146,37 @@ Connected agents are different: they retain `Disconnect` semantics because
 Buzz does not own their key, definition, or runtime. Any true deletion of a
 resident identity remains a host-side operation.
 
+## 4.2 Connected agents must be addressable, not merely visible
+
+A connected agent is only first-class when every gate between an owner's
+keystroke and the agent's process agrees. Three separate facts were found to
+diverge in practice, and all three are product requirements, not deployment
+details:
+
+1. **Community identity.** Buzz derives a community from the relay host, so a
+   connected agent is meaningful only within the community whose relay the
+   resident adapter actually listens to. Onboarding must record which community
+   a connection belongs to and must refuse to present an agent as ready in a
+   community its adapter cannot reach.
+2. **Relay membership.** On a relay that requires membership, an agent's key is
+   refused at authentication regardless of channel membership. Enrolling a
+   connected agent must therefore either establish relay membership for its
+   pubkey or supply owner attestation that satisfies the relay's delegation
+   path. Adding an agent to a channel is not sufficient and must not be
+   presented as if it were.
+3. **Channel-add authority.** The relay enforces the target agent's
+   `channel_add_policy` on any third-party add. An agent that publishes
+   `owner_only` can be added only by a pubkey the relay has materialized as its
+   owner. Buzz mints no owner attestation for a key it does not hold, so an
+   owner currently cannot add its own connected agent to a channel once that
+   agent declares `owner_only`.
+
+The product requirement is that connecting an agent establishes owner evidence
+for it — so `owner_only` remains the safe default and still permits the owner to
+add the agent — and that readiness is reported per community. Weakening the
+agent's policy to `anyone` is a workaround, not the design: it lets any
+community member attach that agent to any channel.
+
 ## 5. Conversation routing
 
 For every enrolled resident identity:
@@ -217,8 +248,15 @@ operation governed by the resident-adapter cutover plan.
 
 ### Gate C — single-agent communication
 
+- the Desktop build and the resident adapter address the **same** community, and
+  the agent's key authenticates against that relay;
+- the owner can add the connected agent to the test channel without weakening
+  the agent's own `channel_add_policy`;
+- no second identity with reply authority for the same display name is a member
+  of the test channel;
 - the native adapter is enabled only for the intended identity and channel;
-- one owner mention reaches Selene;
+- one owner mention reaches Selene, carrying a real `p` tag rather than
+  plain-text `@name`;
 - one correctly signed reply appears in the expected thread;
 - missing-mention, non-owner, and self-authored events do not trigger a reply;
 - restart recovery produces no duplicate reply or model turn.
@@ -274,6 +312,11 @@ As of 2026-07-29:
   a round trip through Selene.
 - Automatic public-key retrieval/generation, managed-agent archive/deletion,
   selective multi-agent enrollment, and direct messages remain open.
+- Connected-agent addressability (§4.2) is open and was the actual reason the
+  first round-trip attempt could not run: the Desktop build and the adapter
+  addressed two different communities, the agent's key was not a member of the
+  Desktop community's relay, and its own `owner_only` policy blocked the owner
+  from adding it to a channel.
 
 Exact commits, installed paths, tests, and runtime state belong in the current
 [session handoff](SESSION_HANDOFF_2026-07-29.md).

@@ -13,7 +13,9 @@ Read first:
 
 ## 1. Binding stop state
 
-- The native OpenClaw Buzz channel on lunar01 is loaded but disabled.
+- The native OpenClaw Buzz channel on lunar01 is loaded, **wired to the Gate C
+  identity/channel pair, and still disabled**. See
+  [§3A Gate C wiring](#3a-gate-c-wiring-and-blockers).
 - The legacy Python connector and webhook adapter remain the production and
   rollback path.
 - No native/legacy reply-authority cutover has occurred.
@@ -21,6 +23,9 @@ Read first:
   matrix has not been rerun.
 - The current Desktop build has connected Selene as metadata but has not
   completed a message round trip through OpenClaw.
+- **One blocker must clear before enablement:** the legacy production Selene
+  identity is still a member of the Gate C channel and the legacy connector
+  holds a global mention subscription. Remove it first (§3A).
 - Do not implement selective OpenClaw-agent enrollment until the single-Selene
   communication and restart gate passes.
 - Do not implement direct-message parity until that same gate passes. RC5
@@ -131,13 +136,18 @@ cd /Users/dspury/Projects/buzz-openclaw-integration
 just desktop-standalone
 ```
 
-At handoff time the process is still running as:
+The app was relaunched later the same day from the same worktree and is running
+again as:
 
 ```text
 Buzz Dev (openclaw-test-integration-2026-07-29)
 Vite port 37299
 bundle ID xyz.block.buzz.app.dev.lunar-park-openclaw-test-integration-2026-07-29
 ```
+
+Do not assume that process is alive in a later session; verify it. The webview
+state and keyring identity are reused across relaunches, so no re-onboarding is
+required.
 
 Recorded validation for `b19fd1508`:
 
@@ -165,7 +175,13 @@ Manual UI observations:
    definition still has a linked Buzz-managed instance, while the menu labels
    the built-in deactivation path as `Delete`.
 9. No message has successfully traveled from the current Buzz build through
-   the native OpenClaw plugin and back as Selene.
+   the native OpenClaw plugin and back as Selene. §3A explains why: the build
+   and the adapter were on two different communities, and a connected agent
+   publishing `owner_only` could not be added to a channel at all.
+10. A second community, `ws://lunar01:3000`, has been added to this build for
+    the Gate C run. The `lunarpark` hosted community remains configured and
+    untouched, including its `selene-openclaw-test` channel
+    (`70c8cefb-f62e-41c1-aa8c-53055ca7d09f`), which is now unused for Gate C.
 
 Persisted public-only local state:
 
@@ -177,6 +193,187 @@ Persisted public-only local state:
 ```
 
 No resident private key is stored there.
+
+## 3A. Gate C wiring and blockers
+
+Recorded at the end of the 2026-07-29 evening session. Everything in this
+section was verified against live state, not inferred from a document.
+
+### Identity and channel mapping
+
+```text
+Desktop build   Buzz Dev (openclaw-test-integration-2026-07-29)
+app data        xyz.block.buzz.app.dev.lunar-park-openclaw-test-integration-2026-07-29
+webview state   ~/Library/WebKit/buzz-desktop
+owner identity  6ff3b9d49d59b3e6656dc3a938f800bc3b0d0b675969593fd85ea018bc34c297
+connected agent 4687f50de3a9e235e28eb58d68b0746062d7be6401bbf78a766bbd6f96ffe3c9
+Gate C channel  dff91016-e5d1-4929-b4d8-5d78b3379f05  "selene-gate-c"  (private)
+Gate C relay    ws://lunar01:3000   community fa7e3353-bcfe-4742-bfe6-64ca1e2357c7
+```
+
+### The decisive finding: two communities, not one
+
+Buzz derives the community boundary from the relay host, so the Desktop build
+and the adapter were never on the same community:
+
+- the integration build's only community was `lunarpark` at
+  `wss://lunarpark.communities.buzz.xyz` — a Cloudflare-fronted hosted relay
+  with `auth_required` and `restricted_writes`;
+- the plugin, pinned CLI, canary identity, and legacy connector all live on the
+  local relay at `ws://lunar01:3000`;
+- each community has its own `general` (`32473c76…` versus `4d6d3cc4…`).
+
+A bounded read-only `buzz listen` proved the consequence directly. Against the
+hosted community the canary is refused at NIP-42:
+
+```text
+{"state":"fatal","message":"auth error: … Authentication failed: restricted: not a relay member"}
+```
+
+Against the local community the same identity connects, replays, and reaches
+EOSE. Desktop channel membership is not relay membership; the hosted relay
+would need an owner-signed kind:9030 or a NIP-OA auth tag for the canary.
+
+Earlier plan text claiming the integration branch exercised runbook steps 2-6
+"against the live Lunar Park relay" was therefore imprecise: it exercised them
+against the hosted community while the adapter listened to the local one. No
+transport defect was involved — the round trip was never reachable.
+
+The user chose to run Gate C on the local `ws://lunar01:3000` community, where
+the canary already authenticates and the owner identity is already established.
+
+### Second finding: owner_only blocks connected-agent channel adds
+
+Adding the connected agent to a channel failed with:
+
+```text
+4687f50d…e3c9: relay returned 400 Bad Request:
+invalid: policy:owner_only — agent has no owner set
+```
+
+`handlers/side_effects.rs` enforces `channel_add_policy` on the *target* of a
+third-party add. `owner_only` requires a materialized `agent_owner_pubkey`,
+which the relay only backfills from a valid NIP-OA auth tag. Buzz never
+establishes that relationship for a connected agent, because it does not own
+the key and mints no attestation — so an owner cannot add its own connected
+agent to any channel once that agent publishes `owner_only`. It succeeded in
+the hosted community only because the canary had never published a profile
+there. This is a concrete instance of P4 and is tracked as P6 in the
+specification.
+
+Worked around agent-side: the canary republished its own policy as `anyone`
+(`44b1642026fac3a789f1e7fec211b344967ede805537ff702a1330a57a47447c`), after
+which the owner-signed add succeeded. Upstream `channels set-add-policy`
+publishes a kind:10100 containing only the policy field, so it clobbered the
+canary's other profile fields — the exact replaceable-event defect RC2 fixes.
+The pre-change profile event was `c9760112…`, content:
+
+```json
+{"agent_type":"openclaw","capabilities":["conversation"],
+ "channel_add_policy":"owner_only","display_name":"Selene","status":"offline"}
+```
+
+Restoring the full field set requires RC2's `buzz agents profile set`; the
+pinned canary binary can only restore the policy value. A side benefit: the
+canary no longer publishes `display_name: "Selene"`, which removes a real
+footgun — two different pubkeys both presented as "Selene" in that community
+and the legacy production identity was selected by mistake once.
+
+### Live configuration now on lunar01
+
+```text
+OpenClaw          2026.7.1 (5f39975)
+plugin buzz       loaded, no diagnostics,
+                  /Users/selene/Lunar-Park/integrations/openclaw-channel-buzz-aebd8dd
+enabled           false
+agentPubkey       4687f50de3a9e235e28eb58d68b0746062d7be6401bbf78a766bbd6f96ffe3c9
+ownerPubkey       6ff3b9d49d59b3e6656dc3a938f800bc3b0d0b675969593fd85ea018bc34c297
+channelIds        ["dff91016-e5d1-4929-b4d8-5d78b3379f05"]
+relayUrl          ws://lunar01:3000
+requireMention    true
+allowlistedPubkeys []
+buzzCliPath       /Users/selene/.local/bin/buzz-openclaw-canary-68513902c
+silentAckEmoji    👀
+config validate   valid; one pre-existing duplicate-plugin-id warning
+```
+
+`buzz users me` under the configured signing key returns
+`4687f50d…e3c9` / `npub1g6rl2r0r483rtc5wkkxk3vr5vp3d00nyqxal0znkdw7kl9hlu0ys3mpklf`,
+so the loaded key matches `agentPubkey`.
+
+Adapter delivery state is unchanged by this session:
+
+```text
+cursor 1 | inbound.completed 8 | outbound 6 | pending 0
+cursor lastCreatedAt 1785352970  lastEventId 3868c3c4…
+```
+
+The Gateway PID moved `20325 → 10374` during the session without a host reboot
+(uptime 11 days) — a LaunchAgent respawn. Buzz was disabled throughout, so no
+listener ran and no delivery state changed. Discord probe `ok`; both legacy
+health endpoints returned HTTP 200 before and after.
+
+### Remaining blocker before enablement
+
+`selene-gate-c` currently has three members:
+
+```text
+6ff3b9d4…c297  owner   Desktop owner
+4687f50d…e3c9  member  connected canary            ← intended
+2311ce81…efa6  member  legacy production Selene    ← must be removed
+```
+
+`connector/router.py` subscribes each legacy agent to its configured channels
+**and** to a global mention filter:
+
+```python
+await self.client.subscribe("agent_mentions",
+    {"kinds": [9, 11], "#p": [self.identity.public_key], "limit": 0})
+```
+
+So the production Selene will act on any `p`-tagged mention of itself in any
+channel it can read. The per-identity invariant is not violated — the pair
+`(4687f50d, dff91016)` has exactly one writer, and `dff91016` is absent from
+the connector's configured channel list (`b5169461`, `4d6d3cc4`) — but a
+production identity sitting in the canary channel is an unnecessary
+cross-authority hazard and a mention aimed at the wrong "Selene" would pollute
+the evidence. Removal needs an owner-signed kind:9001 from Desktop.
+
+### Exactly what remains for Gate C
+
+1. Remove `2311ce81…efa6` from `dff91016…`.
+2. Enable: `channels.buzz.enabled true --strict-json`, `config validate`,
+   `gateway restart`, `gateway status`, Discord probe.
+3. Send **one** owner mention from the Desktop app, selecting the connected
+   agent from the `@` autocomplete so a `p` tag is emitted. A plain-text
+   `@Selene` does not qualify: the message already in that channel
+   (`e2eefce8…`, `@Selene hey`) carries only an `h` tag and will be replayed
+   from the cursor and durably classified missing-mention with no reply — a
+   free negative case worth capturing.
+4. Verify one reply: author `4687f50d…`, `h` = `dff91016…`, correct immediate
+   parent, correct NIP-10 root; `inbound.completed` with `activation=accepted`,
+   one `outbound status=sent`, zero pending.
+5. `gateway restart`, then re-verify: still one reply, one outbound row, no
+   second model turn.
+6. Disable and preserve evidence.
+
+Reply verification needs no owner private key — the relay's own store is
+authoritative:
+
+```sql
+SELECT encode(id,'hex'), encode(pubkey,'hex'), kind, tags
+  FROM events
+ WHERE community_id='fa7e3353-bcfe-4742-bfe6-64ca1e2357c7'
+   AND channel_id='dff91016-e5d1-4929-b4d8-5d78b3379f05'
+   AND deleted_at IS NULL
+ ORDER BY created_at;
+```
+
+Rollback restores `ownerPubkey=626ad40d…6609` and
+`channelIds=["d18b14c3-7e55-48b7-b980-f9de29ba5cb8"]` through the same batch
+form, then `config validate`, `gateway restart`, and both legacy health checks.
+Do not touch `plugins.load.paths`, the legacy LaunchAgents, or the canary
+secret.
 
 ## 4. Product issues now tracked in the specification
 
@@ -222,20 +419,36 @@ RC6 should decrypt/normalize the NIP-17 event, pass that UUID to OpenClaw as a
 main-session continuity or peer isolation. This is an ingress and mapping
 extension, not a second DM session architecture.
 
+### P6 — connected-agent addressability
+
+Specified in `SELF_HOSTED_AGENT_INTEGRATION_SPEC.md` §4.2. Connecting an agent
+must establish owner evidence for its pubkey, record which community the
+connection belongs to, and ensure relay membership on relays that require it.
+Until then, an owner cannot add its own connected agent to a channel when that
+agent publishes `owner_only`, and Desktop can present a connection as ready in a
+community the adapter cannot reach. Weakening the agent's policy to `anyone` is
+the current workaround and is not the target design.
+
 ## 5. Next-session resumption sequence
 
 1. Use the accepted decisions in
    `SELF_HOSTED_AGENT_INTEGRATION_SPEC.md` as the product baseline.
-2. Resolve the exact UUID of the Buzz channel used for the Selene test.
-3. Compare that channel, the isolated canary pubkey, WP5 `channelIds`, and the
-   loaded signing key before enabling anything.
-4. Present the exact enable/test/disable commands and rollback boundary.
-5. Run one owner mention, verify one signed threaded Selene reply, restart the
-   Gateway, and verify no duplicate.
-6. Disable the native channel after the test unless a separately approved soak
+2. Steps 2-4 of the previous list are complete; the results are in §3A. The
+   identity/channel pair is resolved, compared, and already written to the live
+   configuration with the channel still disabled.
+3. Execute the six remaining Gate C steps in
+   [§3A](#exactly-what-remains-for-gate-c). It needs an operator at the Desktop
+   app for the mention, and the legacy-Selene removal must happen first.
+4. Disable the native channel after the test unless a separately approved soak
    begins.
-7. Only after that gate passes, discuss the full corrected matrix and
-   independently sequence RC5 roster enrollment and RC6 DM parity.
+5. Only after that gate passes, discuss the full corrected matrix and rerun it
+   under its own review point.
+6. Buzz-side specification work does not wait on the gate. The accepted
+   sequence for it is P1 host-side identity onboarding, P6 connected-agent
+   channel-add readiness, P4 two-sided readiness, P3/RC5 OpenClaw durable-agent
+   roster detection, and P2 two-stage Buzz-managed removal. Hermes stays
+   unstarted until OpenClaw is proven stable, and upstream PR reconciliation
+   follows that.
 
 ## 6. Accepted product decisions
 
