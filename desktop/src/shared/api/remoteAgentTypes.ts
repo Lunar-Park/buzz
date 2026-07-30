@@ -143,6 +143,39 @@ export type HarnessRosterResult = {
 };
 
 /**
+ * The Buzz identity a harness on a host is configured to sign as.
+ *
+ * `pubkey: undefined` with `ok: true` is the meaningful "no identity yet" answer,
+ * and it is what makes offering host-side generation honest rather than
+ * speculative. `supported: false` means Buzz has no recipe for reading this
+ * harness — manual entry, not an error.
+ */
+export type HostIdentityResolution = {
+  host: string;
+  harnessId: string;
+  ok: boolean;
+  supported: boolean;
+  pubkey?: string;
+  error?: string;
+  errorKind?: HostProbeErrorKind;
+};
+
+/**
+ * A Buzz identity freshly minted on an agent's own host.
+ *
+ * Public half only, by construction: the secret was written to
+ * `secretKeyPath` on the host with owner-only permissions and never crossed the
+ * ssh channel.
+ */
+export type GeneratedHostIdentity = {
+  host: string;
+  pubkey: string;
+  npub: string;
+  /** Where the secret lives on the host, so the harness can be pointed at it. */
+  secretKeyPath: string;
+};
+
+/**
  * A NIP-OA owner attestation issued for a connected agent, ready to install on
  * the agent's host.
  *

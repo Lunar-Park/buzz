@@ -813,6 +813,8 @@ pub fn run() {
             probe_local_agent_host,
             probe_harness_agents,
             probe_local_harness_agent_roster,
+            resolve_host_agent_identity,
+            generate_host_agent_identity,
             list_connected_agents,
             connect_remote_agent,
             disconnect_remote_agent,
