@@ -39,9 +39,11 @@ Status: current handoff. Supersedes SESSION_HANDOFF_2026-07-29.md (moved to hist
    - RC6 Buzz-side: `buzz listen --dms` streams DM conversations with stable
      UUIDs in `h` tags, discovers new conversations by 30s poll,
      `dm_channel_added` lifecycle record under v1 envelope.
-   - Visual verification: two-stage-removal screenshot spec (4 shots, all
-     verified); roster picker was already live-verified 2026-07-30. The
-     attestation dialog and identity field render is checked at Phase 3 step 0.
+   - Visual verification: two-stage-removal screenshot spec (4 shots) plus a
+     connect-flow spec (mock host): resolved-identity field, roster picker with
+     the primary preselected, and the minted owner-attestation dialog with its
+     BUZZ_AUTH_TAG install guidance — all verified. The roster path was also
+     live-verified against lunar01 on 2026-07-30.
 3. Upstream-relevant fixes found on the way:
    - upstream #3607 broke macOS `cargo clippy --all-targets -D warnings`
      (linux_media dead code) — fixed with cfg gates; upstreamable.
@@ -75,9 +77,9 @@ cd /Users/dspury/Projects/buzz-main-next   # or a fresh checkout of main
 just desktop-standalone
 ```
 
-Visual check while connecting (completes Phase 2c's deferred items): the
-identity field offers the resolved host identity, the roster picker lists
-durable agents, and the attestation dialog shows/copies the auth tag.
+Sanity check while connecting: the identity field offers the resolved host
+identity, the roster picker lists durable agents, and the attestation dialog
+shows/copies the auth tag (all already verified against the mock host).
 
 ### Step 1 — connect Selene through the full flow
 

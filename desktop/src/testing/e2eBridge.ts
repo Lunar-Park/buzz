@@ -2102,6 +2102,8 @@ function resetMockRelayAgents(config?: E2eConfig) {
 function resetMockManagedAgents(config?: E2eConfig) {
   mockManagedAgents = [];
   mockArchivedAgents = [];
+  mockConnectedAgents = [];
+  mockOwnerEvidence.clear();
   mockManagedAgentRuntimes = (config?.mock?.managedAgentRuntimes ?? []).map(
     (seed) => ({
       pubkey: seed.pubkey,
@@ -2826,6 +2828,14 @@ let mockManagedAgentRuntimes: MockManagedAgentRuntimeRow[] = [];
 // restore is a move back, mirroring the Rust store.
 let mockArchivedAgents: Array<{ archivedAt: string; agent: MockManagedAgent }> =
   [];
+// Connect-flow (RC3/RC4/P1/P3/P6): one mock host running one harness with a
+// small durable roster, so the dialog, roster picker, identity field, and
+// attestation dialog all render without ssh.
+const MOCK_REMOTE_HOST = "lunar01";
+const MOCK_REMOTE_HARNESS = "openclaw";
+const MOCK_RESOLVED_AGENT_PUBKEY = "4687f50d".repeat(8);
+let mockConnectedAgents: Array<Record<string, unknown>> = [];
+const mockOwnerEvidence = new Map<string, Record<string, unknown>>();
 
 // Mutable `save_subscriptions` table mirror — TEST-ONLY.
 //
@@ -10825,7 +10835,158 @@ export function maybeInstallE2eTauriMocks() {
       case "list_managed_agents":
         return handleListManagedAgents(activeConfig);
       case "list_connected_agents":
-        return [];
+        return mockConnectedAgents;
+      case "list_ssh_hosts":
+        return [
+          {
+            host: MOCK_REMOTE_HOST,
+            hostname: "lunar01.local",
+            user: "selene",
+            port: null,
+            identityFile: null,
+          },
+        ];
+      case "probe_agent_host":
+      case "probe_local_agent_host": {
+        const host =
+          (payload as { host?: string } | null)?.host ?? "__localhost__";
+        return {
+          host,
+          ok: true,
+          durationMs: 142,
+          user: "selene",
+          hostname: "lunar01.local",
+          os: "macos",
+          buzzCliPath: "/Users/selene/.local/bin/buzz",
+          buzzCliVersion: "0.5.2",
+          harnesses: [
+            {
+              id: MOCK_REMOTE_HARNESS,
+              label: "OpenClaw",
+              source: "preset",
+              version: "2026.7.1",
+              ready: true,
+              installHint: "",
+              installInstructionsUrl: "",
+            },
+          ],
+        };
+      }
+      case "probe_harness_agents":
+      case "probe_local_harness_agent_roster": {
+        const { host, harness } = (payload ?? {}) as {
+          host?: string;
+          harness?: string;
+        };
+        return {
+          host: host ?? "__localhost__",
+          harnessId: harness ?? MOCK_REMOTE_HARNESS,
+          ok: true,
+          durationMs: 236,
+          supported: true,
+          candidates: [
+            {
+              harnessId: harness ?? MOCK_REMOTE_HARNESS,
+              agentId: "main",
+              displayName: "Selene",
+              isPrimary: true,
+              model: "claude-fable-5",
+              workspace: "~/selene",
+            },
+            {
+              harnessId: harness ?? MOCK_REMOTE_HARNESS,
+              agentId: "scout",
+              displayName: "Scout",
+              isPrimary: false,
+            },
+            {
+              harnessId: harness ?? MOCK_REMOTE_HARNESS,
+              agentId: "editor",
+              displayName: "Editor",
+              isPrimary: false,
+              bindingCount: 1,
+            },
+          ],
+        };
+      }
+      case "resolve_host_agent_identity": {
+        const { host, harness } = (payload ?? {}) as {
+          host?: string;
+          harness?: string;
+        };
+        return {
+          host: host ?? MOCK_REMOTE_HOST,
+          harnessId: harness ?? MOCK_REMOTE_HARNESS,
+          ok: true,
+          supported: true,
+          pubkey: MOCK_RESOLVED_AGENT_PUBKEY,
+        };
+      }
+      case "generate_host_agent_identity": {
+        const { host } = (payload ?? {}) as { host?: string };
+        return {
+          host: host ?? MOCK_REMOTE_HOST,
+          pubkey: MOCK_RESOLVED_AGENT_PUBKEY,
+          npub: "npub1g6rl2r0r483rtc5wkkxk3vr5vp3d00nyqxal0znkdw7kl9hlu0ys3mpklf",
+          secretKeyPath: "/Users/selene/.config/buzz/agent.key",
+        };
+      }
+      case "connect_remote_agent": {
+        const input = (payload ?? {}) as {
+          host?: string;
+          pubkey?: string;
+          name?: string;
+          harness?: string | null;
+          harnessAgentId?: string | null;
+        };
+        const now = new Date().toISOString();
+        const record = {
+          pubkey: input.pubkey ?? MOCK_RESOLVED_AGENT_PUBKEY,
+          name: input.name ?? "Selene",
+          host: input.host ?? MOCK_REMOTE_HOST,
+          harness: input.harness ?? null,
+          harnessAgentId: input.harnessAgentId ?? null,
+          community: null,
+          createdAt: now,
+          updatedAt: now,
+          hasOwnerEvidence: false,
+        };
+        mockConnectedAgents = [
+          ...mockConnectedAgents.filter((a) => a.pubkey !== record.pubkey),
+          record,
+        ];
+        return record;
+      }
+      case "disconnect_remote_agent": {
+        const { pubkey } = (payload ?? {}) as { pubkey?: string };
+        mockConnectedAgents = mockConnectedAgents.filter(
+          (a) => a.pubkey !== pubkey,
+        );
+        return null;
+      }
+      case "get_connected_agent_owner_evidence": {
+        const { pubkey } = (payload ?? {}) as { pubkey?: string };
+        return pubkey ? (mockOwnerEvidence.get(pubkey) ?? null) : null;
+      }
+      case "mint_connected_agent_owner_evidence": {
+        const { pubkey } = (payload ?? {}) as { pubkey?: string };
+        if (!pubkey) {
+          throw new Error("pubkey required");
+        }
+        const evidence = {
+          agentPubkey: pubkey,
+          ownerPubkey: "deadbeef".repeat(8),
+          authTag: `["auth","${"deadbeef".repeat(8)}","","${"ab".repeat(32)}"]`,
+          conditions: "",
+          issuedAt: new Date().toISOString(),
+          replacedPrevious: mockOwnerEvidence.has(pubkey),
+        };
+        mockOwnerEvidence.set(pubkey, evidence);
+        mockConnectedAgents = mockConnectedAgents.map((a) =>
+          a.pubkey === pubkey ? { ...a, hasOwnerEvidence: true } : a,
+        );
+        return evidence;
+      }
       case "list_archived_agents":
         return mockArchivedAgents.map((row) => ({
           pubkey: row.agent.pubkey,
