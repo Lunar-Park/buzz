@@ -63,6 +63,28 @@ export function permanentDeleteBoundary(): string[] {
 }
 
 /**
+ * Extra stage-one effects for a provider-deployed agent.
+ *
+ * Archiving stops only what runs on this machine. The single-step delete
+ * carried the remote-orphan warnings, so the stage-one confirmation must
+ * carry them too — repointing the menu without moving these rules is how a
+ * live deployment gets orphaned silently. Worded as an effect rather than a
+ * blocking confirm because stage one is reversible: restoring the record
+ * brings the deployment back under management.
+ */
+export function remoteDeploymentEffects(agent: {
+  backend: { type: string };
+  backendAgentId?: string | null;
+}): string[] {
+  if (agent.backend.type !== "provider" || !agent.backendAgentId) {
+    return [];
+  }
+  return [
+    "Does not stop its remote deployment — it keeps running on the provider until shut down there. Restore the agent to manage it again.",
+  ];
+}
+
+/**
  * Whether permanent deletion is offered for this row.
  *
  * The backend refuses any pubkey that is not archived, so this only keeps the UI

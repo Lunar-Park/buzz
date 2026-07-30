@@ -1,10 +1,7 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 
-import {
-  archiveManagedAgent,
-  describeManagedAgentRemoval,
-} from "@/shared/api/managedAgentArchiveApi";
+import { describeManagedAgentRemoval } from "@/shared/api/managedAgentArchiveApi";
 import type { ManagedAgentRemovalPreview } from "@/shared/api/remoteAgentTypes";
 import { Button } from "@/shared/ui/button";
 import {
@@ -36,12 +33,24 @@ import {
 export function RemoveManagedAgentDialog({
   agentName,
   agentPubkey,
+  extraEffects = [],
+  onConfirmRemoval,
   onOpenChange,
   onRemoved,
   open,
 }: {
   agentName: string;
   agentPubkey: string;
+  /**
+   * Caller-known effects the backend preview cannot see (e.g. a provider
+   * deployment that keeps running). Appended to the effects list verbatim.
+   */
+  extraEffects?: string[];
+  /**
+   * Performs the removal. The caller owns the cascade (channel removal,
+   * query invalidation) so this dialog cannot drift from the real action.
+   */
+  onConfirmRemoval: () => Promise<void>;
   onOpenChange: (open: boolean) => void;
   onRemoved?: () => void;
   open: boolean;
@@ -78,7 +87,7 @@ export function RemoveManagedAgentDialog({
     setIsRemoving(true);
     setError(null);
     try {
-      await archiveManagedAgent(agentPubkey);
+      await onConfirmRemoval();
       onRemoved?.();
       onOpenChange(false);
     } catch (cause) {
@@ -106,7 +115,7 @@ export function RemoveManagedAgentDialog({
             </p>
           ) : preview ? (
             <ul className="space-y-1.5 text-sm">
-              {removalEffects(preview).map((effect) => (
+              {[...removalEffects(preview), ...extraEffects].map((effect) => (
                 <li className="flex gap-2 text-muted-foreground" key={effect}>
                   <span aria-hidden="true">·</span>
                   <span>{effect}</span>

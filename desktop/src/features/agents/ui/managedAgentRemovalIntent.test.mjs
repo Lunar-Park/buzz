@@ -6,6 +6,7 @@ import {
   permanentDeleteBoundary,
   removalEffects,
   removalReassurance,
+  remoteDeploymentEffects,
   PERMANENT_DELETE_ACTION_LABEL,
   REMOVE_ACTION_LABEL,
 } from "./managedAgentRemovalIntent.ts";
@@ -85,6 +86,35 @@ test("the permanent-delete boundary names what cannot be erased", () => {
 test("permanent delete is offered only for a real identity", () => {
   assert.ok(canPermanentlyDelete({ pubkey: "a".repeat(64) }));
   assert.ok(!canPermanentlyDelete({ pubkey: "" }));
+});
+
+test("a provider deployment is told it keeps running", () => {
+  // The single-step delete carried these warnings; stage one must too, or a
+  // live deployment is orphaned silently the first time the new path is used.
+  const effects = remoteDeploymentEffects({
+    backend: { type: "provider" },
+    backendAgentId: "deploy-1",
+  });
+  assert.equal(effects.length, 1);
+  assert.match(effects[0], /keeps running/);
+  assert.match(effects[0], /Restore/);
+});
+
+test("local agents get no remote-deployment warning", () => {
+  assert.deepEqual(
+    remoteDeploymentEffects({
+      backend: { type: "local" },
+      backendAgentId: "x",
+    }),
+    [],
+  );
+  assert.deepEqual(
+    remoteDeploymentEffects({
+      backend: { type: "provider" },
+      backendAgentId: null,
+    }),
+    [],
+  );
 });
 
 test("the reversible action never uses the word Delete", () => {
