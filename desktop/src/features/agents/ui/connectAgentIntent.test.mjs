@@ -3,13 +3,18 @@ import test from "node:test";
 
 import {
   canSubmitConnectAgent,
+  candidateLabel,
   connectAgentPayload,
   emptyConnectAgentDraft,
   harnessOptions,
   missingBuzzCli,
   nameInputMessage,
+  nameSuggestionForCandidate,
+  preselectedCandidateId,
   pubkeyInputMessage,
   reachabilityLabel,
+  rosterCandidates,
+  rosterStatusMessage,
   verifyPubkeyInput,
 } from "./connectAgentIntent.ts";
 
@@ -113,7 +118,13 @@ test("submit is blocked while a probe is in flight", () => {
 test("the payload trims and omits an unset harness", () => {
   assert.deepEqual(
     connectAgentPayload(draft({ host: " lunar02 ", name: "  Scout  " })),
-    { host: "lunar02", pubkey: HEX, name: "Scout", harness: null },
+    {
+      host: "lunar02",
+      pubkey: HEX,
+      name: "Scout",
+      harness: null,
+      harnessAgentId: null,
+    },
   );
   assert.deepEqual(
     connectAgentPayload(draft({ harness: "claude" })).harness,
@@ -211,4 +222,131 @@ test("an unclassified probe failure does not invent a cause", () => {
     harnesses: [],
   });
   assert.equal(label, "probe failed");
+});
+
+// ── durable agent roster (RC5) ───────────────────────────────────────────────
+
+function candidate(overrides = {}) {
+  return {
+    harnessId: "openclaw",
+    agentId: "main",
+    displayName: "main",
+    isPrimary: true,
+    ...overrides,
+  };
+}
+
+function roster(overrides = {}) {
+  return {
+    host: "lunar01",
+    harnessId: "openclaw",
+    ok: true,
+    durationMs: 12,
+    supported: true,
+    candidates: [candidate()],
+    ...overrides,
+  };
+}
+
+test("a failed roster offers nothing rather than a partial list", () => {
+  // Half a roster reads as "these are the agents" and would hide the rest with
+  // no visible reason.
+  assert.deepEqual(
+    rosterCandidates(roster({ ok: false, candidates: [candidate()] })),
+    [],
+  );
+  assert.deepEqual(rosterCandidates(null), []);
+});
+
+test("the primary is preselected", () => {
+  const result = roster({
+    candidates: [
+      candidate({ agentId: "astra", displayName: "Astra", isPrimary: false }),
+      candidate({ agentId: "main", isPrimary: true }),
+    ],
+  });
+  assert.equal(preselectedCandidateId(result), "main");
+});
+
+test("no preselection is invented when the harness flags no primary", () => {
+  // The backend already applies the spec's `main` fallback, so anything still
+  // unflagged here genuinely has no primary — guessing would enroll an agent the
+  // user never chose.
+  const result = roster({
+    candidates: [
+      candidate({ agentId: "astra", displayName: "Astra", isPrimary: false }),
+      candidate({ agentId: "cato", displayName: "Cato", isPrimary: false }),
+    ],
+  });
+  assert.equal(preselectedCandidateId(result), "");
+});
+
+test("candidate labels disambiguate name from id", () => {
+  assert.equal(candidateLabel(candidate()), "main · primary");
+  assert.equal(
+    candidateLabel(
+      candidate({ agentId: "astra", displayName: "Astra", isPrimary: false }),
+    ),
+    "Astra (astra)",
+  );
+});
+
+test("an unsupported harness reads as manual entry, not as a failure", () => {
+  // A retry prompt here would send the user after a problem that does not exist.
+  const message = rosterStatusMessage(
+    roster({ ok: false, supported: false, candidates: [] }),
+  );
+  assert.match(message, /cannot list/);
+  assert.doesNotMatch(message, /retry|again/i);
+});
+
+test("a genuine roster failure surfaces the backend's reason", () => {
+  const message = rosterStatusMessage(
+    roster({ ok: false, error: "ssh said no", candidates: [] }),
+  );
+  assert.equal(message, "ssh said no");
+});
+
+test("an empty roster says so instead of looking like a loading state", () => {
+  assert.match(
+    rosterStatusMessage(roster({ candidates: [] })),
+    /no configured agents/,
+  );
+});
+
+test("a healthy roster needs no message", () => {
+  assert.equal(rosterStatusMessage(roster()), null);
+  assert.equal(rosterStatusMessage(null), null);
+});
+
+test("the payload carries the selected harness agent id", () => {
+  const payload = connectAgentPayload(
+    draft({ harness: "openclaw", harnessAgentId: "astra" }),
+  );
+  assert.equal(payload.harnessAgentId, "astra");
+});
+
+test("an agent id without a harness is dropped", () => {
+  // An agent id is scoped by its harness; alone it identifies nothing.
+  const payload = connectAgentPayload(
+    draft({ harness: "", harnessAgentId: "astra" }),
+  );
+  assert.equal(payload.harnessAgentId, null);
+});
+
+test("a connect with no roster selection still submits", () => {
+  // A harness may hold exactly one agent, or Buzz may not enumerate it.
+  const payload = connectAgentPayload(draft({ harness: "openclaw" }));
+  assert.equal(payload.harnessAgentId, null);
+  assert.ok(canSubmitConnectAgent(draft({ harness: "openclaw" })));
+});
+
+test("a name is suggested only while the field is untouched", () => {
+  const astra = candidate({ agentId: "astra", displayName: "Astra" });
+  assert.equal(nameSuggestionForCandidate(astra, "", ""), "Astra");
+  // Still replaceable when the current value is the previous suggestion.
+  assert.equal(nameSuggestionForCandidate(astra, "main", "main"), "Astra");
+  // Never overwrites something the user typed themselves.
+  assert.equal(nameSuggestionForCandidate(astra, "My Agent", "main"), null);
+  assert.equal(nameSuggestionForCandidate(undefined, "", ""), null);
 });

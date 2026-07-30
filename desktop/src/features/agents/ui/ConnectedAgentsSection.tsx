@@ -1,12 +1,14 @@
 import * as React from "react";
 import {
   EllipsisVertical,
+  KeyRound,
   Loader2,
   RefreshCw,
   Unplug,
   UserPlus,
 } from "lucide-react";
 
+import { ConnectedAgentEvidenceDialog } from "./ConnectedAgentEvidenceDialog";
 import { useUserProfileQuery } from "@/features/profile/hooks";
 import { probeAgentHost } from "@/shared/api/remoteAgentApi";
 import type {
@@ -62,60 +64,83 @@ export function ConnectedAgentCard({
       });
   }, [agent.host]);
 
+  const [evidenceOpen, setEvidenceOpen] = React.useState(false);
+
   const harnessLabel = agent.harness?.trim() || "Self-hosted";
+  // The harness agent id earns a place in the subtitle only when it adds
+  // information: for a single-agent harness it repeats the harness name.
+  const agentIdLabel = agent.harnessAgentId?.trim();
 
   return (
-    <AgentIdentityCard
-      actions={
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <button
-              aria-label={`${agent.name} connected agent actions`}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              type="button"
+    <>
+      <AgentIdentityCard
+        actions={
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label={`${agent.name} connected agent actions`}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                type="button"
+              >
+                <EllipsisVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              onCloseAutoFocus={(event) => event.preventDefault()}
             >
-              <EllipsisVertical className="h-4 w-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            onCloseAutoFocus={(event) => event.preventDefault()}
-          >
-            <DropdownMenuItem disabled={isPending} onClick={onAddToChannel}>
-              <UserPlus className="h-4 w-4" />
-              Add to channel
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={probe === "pending"}
-              onClick={checkHost}
-            >
-              {probe === "pending" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              Check host
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              disabled={isPending}
-              onClick={onDisconnect}
-            >
-              <Unplug className="h-4 w-4" />
-              Disconnect
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      }
-      ariaLabel={`${agent.name} connected agent profile`}
-      avatarUrl={profileQuery.data?.avatarUrl}
-      dataTestId={`connected-agent-${agent.pubkey}`}
-      label={profileQuery.data?.displayName?.trim() || agent.name}
-      modelLabel={`${harnessLabel} · ${agent.host}`}
-      onClick={onOpenProfile}
-      statusBadge={<ConnectedAgentStatus probe={probe} />}
-    />
+              <DropdownMenuItem disabled={isPending} onClick={onAddToChannel}>
+                <UserPlus className="h-4 w-4" />
+                Add to channel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setEvidenceOpen(true)}>
+                <KeyRound className="h-4 w-4" />
+                {agent.hasOwnerEvidence
+                  ? "Owner attestation"
+                  : "Issue owner attestation"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={probe === "pending"}
+                onClick={checkHost}
+              >
+                {probe === "pending" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Check host
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                disabled={isPending}
+                onClick={onDisconnect}
+              >
+                <Unplug className="h-4 w-4" />
+                Disconnect
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+        ariaLabel={`${agent.name} connected agent profile`}
+        avatarUrl={profileQuery.data?.avatarUrl}
+        dataTestId={`connected-agent-${agent.pubkey}`}
+        label={profileQuery.data?.displayName?.trim() || agent.name}
+        modelLabel={
+          agentIdLabel
+            ? `${harnessLabel} · ${agentIdLabel} · ${agent.host}`
+            : `${harnessLabel} · ${agent.host}`
+        }
+        onClick={onOpenProfile}
+        statusBadge={<ConnectedAgentStatus probe={probe} />}
+      />
+      <ConnectedAgentEvidenceDialog
+        agentName={agent.name}
+        agentPubkey={agent.pubkey}
+        onOpenChange={setEvidenceOpen}
+        open={evidenceOpen}
+      />
+    </>
   );
 }
 

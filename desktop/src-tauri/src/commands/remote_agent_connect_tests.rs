@@ -9,6 +9,7 @@ fn sample_record() -> ConnectedAgentRecord {
         AGENT_HEX,
         "Scout",
         Some("claude".to_string()),
+        Some("main".to_string()),
         "2026-07-28T00:00:00Z",
     )
 }
@@ -104,11 +105,15 @@ fn a_connected_record_stores_the_identity_and_the_host_and_nothing_else() {
         .collect();
     keys.sort_unstable();
 
+    // `harness_agent_id` names which durable agent inside the harness this is —
+    // a routing key, not a spawn instruction. Every entry here is still either a
+    // public identity or a local label.
     assert_eq!(
         keys,
         [
             "created_at",
             "harness",
+            "harness_agent_id",
             "host",
             "name",
             "pubkey",
@@ -125,7 +130,14 @@ fn a_probeless_connect_stores_no_harness_key_at_all() {
     // `harness` is an observation, so "not observed" must be representable.
     // `skip_serializing_if` keeps it out of the file rather than writing null,
     // which keeps the stored shape honest about what was actually seen.
-    let record = connected_record("lunar02", AGENT_HEX, "Scout", None, "2026-07-28T00:00:00Z");
+    let record = connected_record(
+        "lunar02",
+        AGENT_HEX,
+        "Scout",
+        None,
+        None,
+        "2026-07-28T00:00:00Z",
+    );
     let json = serde_json::to_value(&record).unwrap();
     assert!(!json.as_object().unwrap().contains_key("harness"));
 }
