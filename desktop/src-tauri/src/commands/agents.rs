@@ -70,7 +70,7 @@ pub(super) fn retain_managed_agent_pending(
 /// `pending_sync = 1`. The `d_tag` is the agent's pubkey. Best-effort: a
 /// failure is logged and swallowed so a retention hiccup never blocks the
 /// disk-authoritative delete.
-pub(super) fn tombstone_managed_agent_pending(
+pub(crate) fn tombstone_managed_agent_pending(
     app: &AppHandle,
     state: &AppState,
     agent_pubkey: &str,
@@ -173,7 +173,7 @@ pub(super) fn build_agent_archive_request(
 /// `managed_agents_store_lock`-held delete body, never across an `.await`,
 /// best-effort — a failure is logged and swallowed so it never blocks the
 /// disk-authoritative delete.
-pub(super) fn archive_managed_agent_pending(app: &AppHandle, state: &AppState, agent_pubkey: &str) {
+pub(crate) fn archive_managed_agent_pending(app: &AppHandle, state: &AppState, agent_pubkey: &str) {
     use crate::managed_agents::retention::{open_retention_db, retain_event, RetainedEvent};
     use buzz_core_pkg::kind::KIND_IA_ARCHIVE_REQUEST;
     use nostr::JsonUtil;
