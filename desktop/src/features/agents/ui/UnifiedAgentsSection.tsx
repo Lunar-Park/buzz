@@ -63,6 +63,7 @@ type UnifiedAgentsSectionProps = {
   onAddConnectedAgentToChannel: (agent: ConnectedAgent) => void;
   onDisconnectAgent: (agent: ConnectedAgent) => void;
   onDiscoverPersonas: () => void;
+  onRestoreStarterAgents: () => void;
   onDuplicatePersona: (persona: AgentPersona) => void;
   onEditPersona: (persona: AgentPersona) => void;
   onSharePersona: (
@@ -112,6 +113,7 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
     onAddConnectedAgentToChannel,
     onDisconnectAgent,
     onDiscoverPersonas,
+    onRestoreStarterAgents,
     onDuplicatePersona,
     onEditPersona,
     onSharePersona,
@@ -222,6 +224,7 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
               onCreate={onCreatePersona}
               onDiscover={onDiscoverPersonas}
               onImport={openFilePicker}
+              onRestoreStarters={onRestoreStarterAgents}
             />
           </div>
 
@@ -494,12 +497,14 @@ function NewAgentCard({
   onCreate,
   onDiscover,
   onImport,
+  onRestoreStarters,
 }: {
   isPending: boolean;
   onConnect: () => void;
   onCreate: () => void;
   onDiscover: () => void;
   onImport: () => void;
+  onRestoreStarters: () => void;
 }) {
   return (
     <DropdownMenu modal={false}>
@@ -525,6 +530,13 @@ function NewAgentCard({
           onClick={onImport}
         >
           Import
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          data-testid="restore-starter-agents-menu-item"
+          disabled={isPending}
+          onClick={onRestoreStarters}
+        >
+          Restore Buzz starter agents
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

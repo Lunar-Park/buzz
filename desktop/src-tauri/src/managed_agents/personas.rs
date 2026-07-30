@@ -114,6 +114,15 @@ fn built_in_persona_records(now: &str) -> Vec<AgentDefinition> {
     if !builtin_personas_enabled(std::env::var("BUZZ_BUILTIN_PERSONAS").ok().as_deref()) {
         return Vec::new();
     }
+    builtin_persona_pack(now)
+}
+
+/// The bundled starter pack, ungated.
+///
+/// `Restore Buzz starter agents` must work precisely when the automatic
+/// boot-time merge is disabled, so it builds from this rather than the gated
+/// [`built_in_persona_records`].
+fn builtin_persona_pack(now: &str) -> Vec<AgentDefinition> {
     BUILT_IN_PERSONAS
         .iter()
         .map(|persona| AgentDefinition {
@@ -141,8 +150,46 @@ fn built_in_persona_records(now: &str) -> Vec<AgentDefinition> {
         .collect()
 }
 
+/// Re-add the bundled starter personas (P2: `Restore Buzz starter agents`).
+///
+/// Unlike the boot-time merge this deliberately ignores the
+/// `BUZZ_BUILTIN_PERSONAS` gate — the explicit user action must work exactly
+/// when the automatic merge is off. It also reactivates a deactivated copy,
+/// because from the user's view "restore" means the starter agents show up
+/// again, not that a hidden record silently regains a flag.
+///
+/// Returns the merged list and how many personas were added or reactivated;
+/// a second call is a no-op returning 0.
+pub fn restore_builtin_personas_records(
+    mut stored: Vec<AgentDefinition>,
+    now: &str,
+) -> (Vec<AgentDefinition>, usize) {
+    let mut restored = 0;
+    for mut built_in in builtin_persona_pack(now) {
+        if let Some(existing) = stored.iter_mut().find(|record| record.id == built_in.id) {
+            if !existing.is_builtin || !existing.is_active {
+                existing.is_builtin = true;
+                existing.is_active = true;
+                existing.updated_at = now.to_string();
+                restored += 1;
+            }
+        } else {
+            built_in.is_active = true;
+            stored.push(built_in);
+            restored += 1;
+        }
+    }
+    if restored > 0 {
+        sort_personas(&mut stored);
+    }
+    (stored, restored)
+}
+
+/// Look up one bundled template by id. Deliberately ungated: this answers
+/// "what does the template look like" (avatar migration of pre-existing
+/// records, starter restore), not "should the pack be merged".
 pub(crate) fn built_in_persona_definition(id: &str, now: &str) -> Option<AgentDefinition> {
-    built_in_persona_records(now)
+    builtin_persona_pack(now)
         .into_iter()
         .find(|persona| persona.id == id)
 }
@@ -175,10 +222,20 @@ fn sort_personas(records: &mut [AgentDefinition]) {
     });
 }
 
-fn merge_personas(mut stored: Vec<AgentDefinition>, now: &str) -> (Vec<AgentDefinition>, bool) {
+fn merge_personas(stored: Vec<AgentDefinition>, now: &str) -> (Vec<AgentDefinition>, bool) {
+    merge_personas_with(stored, built_in_persona_records(now), now)
+}
+
+/// The merge with the built-in pack passed in, so tests can exercise the
+/// upstream merge behavior without racing the process-global env gate.
+fn merge_personas_with(
+    mut stored: Vec<AgentDefinition>,
+    built_ins: Vec<AgentDefinition>,
+    now: &str,
+) -> (Vec<AgentDefinition>, bool) {
     let mut changed = false;
 
-    for built_in in built_in_persona_records(now) {
+    for built_in in built_ins {
         if let Some(existing) = stored.iter_mut().find(|record| record.id == built_in.id) {
             if !existing.is_builtin {
                 existing.is_builtin = true;

@@ -39,6 +39,32 @@ pub use update::update_persona;
 mod inbound;
 pub use inbound::reconcile_inbound_persona_event;
 
+/// P2: `Restore Buzz starter agents` — re-add the bundled starter personas.
+///
+/// Deliberately ignores the `BUZZ_BUILTIN_PERSONAS` gate: the explicit user
+/// action must work exactly when the automatic boot-time merge is disabled.
+/// Returns how many personas were added or reactivated (0 = nothing to do).
+#[tauri::command]
+pub async fn restore_builtin_personas(app: AppHandle) -> Result<usize, String> {
+    use tauri::Manager;
+    tokio::task::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _store_guard = state
+            .managed_agents_store_lock
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let stored = load_personas(&app)?;
+        let (records, restored) =
+            crate::managed_agents::restore_builtin_personas_records(stored, &now_iso());
+        if restored > 0 {
+            save_personas(&app, &records)?;
+        }
+        Ok(restored)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking failed: {e}"))?
+}
+
 #[tauri::command]
 pub async fn list_personas(app: AppHandle) -> Result<Vec<AgentDefinition>, String> {
     use tauri::Manager;

@@ -68,6 +68,14 @@ export async function listPersonas(): Promise<AgentPersona[]> {
   return (await invokeTauri<RawPersona[]>("list_personas")).map(fromRawPersona);
 }
 
+/**
+ * Re-add the bundled starter personas (Restore Buzz starter agents).
+ * Resolves to how many were added or reactivated; 0 means nothing to do.
+ */
+export async function restoreBuiltinPersonas(): Promise<number> {
+  return invokeTauri<number>("restore_builtin_personas");
+}
+
 export async function createPersona(
   input: CreatePersonaInput,
 ): Promise<AgentPersona> {
