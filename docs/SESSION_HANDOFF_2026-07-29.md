@@ -166,8 +166,15 @@ cd /Users/dspury/Projects/buzz-openclaw-integration
 just desktop-standalone
 ```
 
-The app was relaunched later the same day from the same worktree and is running
-again as:
+The app was relaunched later the same day from the same worktree, used for the
+Gate C setup, and then **stopped**. No Buzz Desktop process is running at
+handoff; port 37299 is free. Relaunch with:
+
+```sh
+cd /Users/dspury/Projects/buzz-openclaw-integration
+. ./bin/activate-hermit
+just desktop-standalone
+```
 
 ```text
 Buzz Dev (openclaw-test-integration-2026-07-29)
@@ -175,9 +182,16 @@ Vite port 37299
 bundle ID xyz.block.buzz.app.dev.lunar-park-openclaw-test-integration-2026-07-29
 ```
 
-Do not assume that process is alive in a later session; verify it. The webview
-state and keyring identity are reused across relaunches, so no re-onboarding is
-required.
+Every piece of Gate C setup survived the shutdown, so relaunching needs no
+re-onboarding and no repeated wiring:
+
+```text
+connected-agents.json  Selene / 4687f50d… / lunar01 / openclaw
+teams.json             Welcome Team → [4687f50d…], no persona ids
+communities            lunarpark (hosted) and lunar01 (ws://lunar01:3000,
+                       id f0e51b11-847f-4b87-88c0-3c052e66d0e6, added 23:10:42Z)
+active community       lunar01 — the app opens straight into the Gate C community
+```
 
 Recorded validation for `b19fd1508`:
 
