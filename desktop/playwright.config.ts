@@ -143,6 +143,7 @@ export default defineConfig({
       testMatch: [
         "**/agents.spec.ts",
         "**/two-stage-removal-screenshots.spec.ts",
+        "**/connect-agent-screenshots.spec.ts",
         "**/agent-snapshot-recipient.spec.ts",
         "**/onboarding.spec.ts",
         "**/stream.spec.ts",
