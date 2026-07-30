@@ -12,7 +12,12 @@ import {
   useStopManagedAgentMutation,
   useDeleteManagedAgentMutation,
 } from "@/features/agents/hooks";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { archiveManagedAgent } from "@/shared/api/managedAgentArchiveApi";
+import { managedAgentsQueryKey } from "@/features/agents/hooks";
 import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
+import { archivedAgentsQueryKey } from "./useArchivedAgents";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { usePresenceQuery } from "@/features/presence/hooks";
 import type {
@@ -37,6 +42,7 @@ import {
 } from "../lib/instanceInputForDefinition";
 
 export function useManagedAgentActions() {
+  const queryClient = useQueryClient();
   const { globalConfig } = useGlobalAgentConfig();
   const relayAgentsQuery = useRelayAgentsQuery();
   const managedAgentsQuery = useManagedAgentsQuery();
@@ -278,6 +284,33 @@ export function useManagedAgentActions() {
     );
   }
 
+  /**
+   * Stage one of the two-stage removal: hide the agent, keep its identity.
+   *
+   * Separate from `handleDelete`, which is still the single-step teardown that
+   * destroys the key and warns about orphaning a remote deployment. Archiving a
+   * provider-backed agent stops only what runs locally, so the caller's
+   * confirmation must not imply a remote deployment was torn down.
+   */
+  async function handleArchive(pubkey: string) {
+    clearFeedback();
+    try {
+      await archiveManagedAgent(pubkey);
+      await removeAgentFromAllChannels(pubkey);
+      if (logAgentPubkey === pubkey) {
+        setLogAgentPubkey(null);
+      }
+      await queryClient.invalidateQueries({ queryKey: managedAgentsQueryKey });
+      await queryClient.invalidateQueries({ queryKey: archivedAgentsQueryKey });
+    } catch (error) {
+      setActionErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to remove agent from My Agents.",
+      );
+    }
+  }
+
   async function handleDelete(pubkey: string) {
     clearFeedback();
     try {
@@ -398,6 +431,7 @@ export function useManagedAgentActions() {
       : null;
 
   return {
+    handleArchive,
     relayAgentsQuery,
     managedAgentsQuery,
     managedAgentLogQuery,
