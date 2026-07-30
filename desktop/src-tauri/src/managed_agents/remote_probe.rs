@@ -53,6 +53,13 @@ use crate::managed_agents::HarnessSource;
 /// as JSON inside [`roster::HarnessRosterResult`].
 pub mod roster;
 
+/// Resolving and generating a resident agent's Buzz identity on its own host.
+pub mod identity;
+
+pub use identity::{
+    generate_ssh_host_identity, resolve_ssh_host_identity, GeneratedHostIdentity,
+    HostIdentityResolution,
+};
 pub use roster::{probe_local_harness_agents, probe_ssh_harness_agents, HarnessRosterResult};
 
 /// Sentinel that brackets the probe's own output.

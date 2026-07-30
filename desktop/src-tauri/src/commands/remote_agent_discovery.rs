@@ -4,13 +4,20 @@
 //! them?" so an agent that already runs on another host can be found instead of
 //! described by hand.
 //!
-//! All three commands are read-only. Nothing here installs software, writes to
-//! a remote host, or collects a credential — the probe runs `command -v` and
-//! `--version` and nothing else.
+//! Every command here is read-only **except** [`generate_host_agent_identity`],
+//! which mints a keypair on the host and is the one write in this module. It is
+//! called out rather than blended in because the rest of this surface is safe to
+//! run speculatively and that one is not: callers must gate it behind an explicit
+//! confirmation naming the machine being changed.
+//!
+//! Nothing here installs software or collects a credential. Even the write keeps
+//! the invariant that matters — `buzz keys generate --out` leaves the secret in a
+//! mode-`0600` file on the host and returns only its public half and path.
 
 use crate::managed_agents::remote_probe::{
-    probe_local_harness_agents, probe_localhost, probe_ssh_harness_agents, probe_ssh_host,
-    HarnessRosterResult, HostProbeResult,
+    generate_ssh_host_identity, probe_local_harness_agents, probe_localhost,
+    probe_ssh_harness_agents, probe_ssh_host, resolve_ssh_host_identity, GeneratedHostIdentity,
+    HarnessRosterResult, HostIdentityResolution, HostProbeResult,
 };
 use crate::managed_agents::ssh_config::{parse_ssh_config, SshHost};
 
@@ -100,4 +107,57 @@ pub async fn probe_local_harness_agent_roster(
     tokio::task::spawn_blocking(move || probe_local_harness_agents(&harness))
         .await
         .map_err(|e| format!("spawn_blocking failed: {e}"))
+}
+
+/// Read the Buzz identity a harness on `host` is configured to sign as.
+///
+/// Read-only, and the first step of identity onboarding: it answers "does this
+/// agent already have a Buzz identity?" so the user confirms a real value instead
+/// of hunting for an npub. `None` with `ok: true` is the meaningful "not yet"
+/// answer that makes offering host-side generation honest.
+#[tauri::command]
+pub async fn resolve_host_agent_identity(
+    host: String,
+    harness: String,
+) -> Result<HostIdentityResolution, String> {
+    tokio::task::spawn_blocking(move || {
+        let hosts = parse_ssh_config();
+        let Some(entry) = hosts.into_iter().find(|candidate| candidate.host == host) else {
+            return Err(format!(
+                "'{host}' is not a Host alias in ~/.ssh/config; only configured hosts can be probed"
+            ));
+        };
+        Ok(resolve_ssh_host_identity(&entry, &harness))
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking failed: {e}"))?
+}
+
+/// Mint a fresh Buzz identity for an agent **on its own host**.
+///
+/// Unlike every other command in this module this one **writes to the host**, so
+/// callers must invoke it only from an explicitly confirmed action that names the
+/// machine being changed.
+///
+/// The secret never comes back: `buzz keys generate --out` writes it to a
+/// mode-`0600` file on the host and prints only the public half and the path.
+/// `--force` is never passed, so an agent that already has a key fails loudly
+/// rather than losing its identity.
+#[tauri::command]
+pub async fn generate_host_agent_identity(
+    host: String,
+    agent_id: String,
+) -> Result<GeneratedHostIdentity, String> {
+    tokio::task::spawn_blocking(move || {
+        let hosts = parse_ssh_config();
+        let Some(entry) = hosts.into_iter().find(|candidate| candidate.host == host) else {
+            return Err(format!(
+                "'{host}' is not a Host alias in ~/.ssh/config; Buzz only reaches hosts from \
+                 your own ssh config"
+            ));
+        };
+        generate_ssh_host_identity(&entry, &agent_id)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking failed: {e}"))?
 }
