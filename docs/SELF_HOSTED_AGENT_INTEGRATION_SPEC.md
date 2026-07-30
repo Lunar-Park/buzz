@@ -312,11 +312,23 @@ As of 2026-07-29:
   a round trip through Selene.
 - Automatic public-key retrieval/generation, managed-agent archive/deletion,
   selective multi-agent enrollment, and direct messages remain open.
-- Connected-agent addressability (§4.2) is open and was the actual reason the
-  first round-trip attempt could not run: the Desktop build and the adapter
-  addressed two different communities, the agent's key was not a member of the
-  Desktop community's relay, and its own `owner_only` policy blocked the owner
-  from adding it to a channel.
+- Connected-agent addressability (§4.2) was the actual reason the first
+  round-trip attempt could not run: the Desktop build and the adapter addressed
+  two different communities, the agent's key was not a member of the Desktop
+  community's relay, and its own `owner_only` policy blocked the owner from
+  adding it to a channel.
+- §4.2 item 3 (channel-add authority) and item 2 (relay membership) now have an
+  implementation: Buzz can issue a NIP-OA owner attestation for a connected
+  agent, which the host installs as its adapter auth tag. The relay materializes
+  ownership from the AUTH event, which satisfies `owner_only` adds and admits the
+  agent on a membership-required relay through owner delegation. Surfacing the
+  attestation in the connect flow, and §4.2 item 1 per-community scoping, remain
+  open.
+- Durable harness-agent roster detection is implemented behind a
+  harness-neutral candidate shape, with the primary preselected and the full
+  roster returned. Selection UI and per-agent identity minting remain open, and
+  the current OpenClaw adapter still serves one account, so multi-agent
+  *communication* remains WP5A.
 
 Exact commits, installed paths, tests, and runtime state belong in the current
 [session handoff](SESSION_HANDOFF_2026-07-29.md).

@@ -111,6 +111,52 @@ against `upstream/main`, where the base matched; it does not hold for the
 integration stack. Any PR cut from this lineage needs a rebase or a split
 before that guard can pass, and the RC5 commit adds no new entry.
 
+### P6 owner-attestation branch
+
+```text
+worktree  /Users/dspury/Projects/buzz-rc5-roster
+branch    lunar-park/rc-p6-owner-attestation
+head      e14d90e9b
+base      lunar-park/rc5-harness-roster @ 14103c14d (stacked)
+state     clean, local-only
+```
+
+Adds `mint_connected_agent_owner_evidence` and
+`get_connected_agent_owner_evidence`: Buzz signs a NIP-OA attestation for a
+connected agent locally and returns it for the user to install on the host as
+`BUZZ_AUTH_TAG` / `channels.buzz.authTag`. Buzz installs nothing itself and
+publishes nothing — the attestation takes effect through the agent's own later
+events.
+
+The delivery chain was verified link by link in code, not assumed:
+
+```text
+Desktop mints tag (buzz_sdk::nip_oa::compute_auth_tag)
+  -> host installs it as the adapter's auth tag
+  -> buzz-ws-client build_auth_event(challenge, relay, keys, auth_tag)
+       puts it in the kind:22242 AUTH event
+  -> relay handlers/auth.rs extract_auth_tag_json(&event)
+  -> materialize_nip_oa_owner  (open relays: auth.rs:244 backfill;
+                                closed relays: delegated membership)
+  -> users.agent_owner_pubkey set
+  -> owner_only channel adds accept the owner, and a closed relay admits the
+     agent because its attested owner is a member
+```
+
+`conditions` is deliberately empty: the membership and channel-add paths verify
+only the signature and never evaluate a clause, so a `kind=` or `created_at<`
+value would restrict nothing while reading as a restriction. A test pins the
+empty value so the decision must be revisited deliberately if the relay ever
+enforces clauses there.
+
+Validation: 1970 Tauri tests (+12), fmt, clippy `-D warnings`, `tsc`, biome, and
+both remaining guards clean; no new file-size ratchet entry. Storage fields are
+optional with serde defaults and a test loads a pre-field store.
+
+Still open for P6: the tag is not yet surfaced in the Desktop UI, and
+connected-agent records remain global rather than community-scoped
+(specification §4.2 item 1).
+
 ### Focused Buzz branches
 
 All focused worktrees are clean, pushed, and match their `origin/*` refs:
