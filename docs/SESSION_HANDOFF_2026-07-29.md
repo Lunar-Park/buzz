@@ -153,9 +153,35 @@ Validation: 1970 Tauri tests (+12), fmt, clippy `-D warnings`, `tsc`, biome, and
 both remaining guards clean; no new file-size ratchet entry. Storage fields are
 optional with serde defaults and a test loads a pre-field store.
 
-Still open for P6: the tag is not yet surfaced in the Desktop UI, and
-connected-agent records remain global rather than community-scoped
-(specification §4.2 item 1).
+### Connect-flow UI
+
+```text
+head   878ca7896  (same worktree/branch, third commit)
+```
+
+Wires both slices into the connect flow:
+
+- choosing a harness lists its durable agents with the primary preselected and
+  the rest visible but unselected; selecting one prefills the agent name only
+  while the field is untouched;
+- `harness_agent_id` is persisted, so roster picking is a stored
+  Buzz-pubkey-to-harness-agent mapping rather than a cosmetic choice;
+- each connected agent has an owner-attestation dialog that reads existing
+  evidence rather than re-minting, copies the tag, and names where it goes
+  (`BUZZ_AUTH_TAG`, or `channels.buzz.authTag`).
+
+Validation: 1970 Tauri tests, 3807 Desktop JavaScript tests, fmt, clippy, tsc,
+biome, both remaining guards, no new ratchet entry, and a passing production Vite
+build. The roster rules live in the pure intent module and are unit-tested; the
+rendered UI has **not** been visually verified — launch the app from
+`/Users/dspury/Projects/buzz-rc5-roster` to see it.
+
+Still open for P6: connected-agent records remain global rather than
+community-scoped (specification §4.2 item 1), and per-agent host-side identity
+generation (P1) is not implemented, so enrolling a second harness agent still
+needs a manually pasted pubkey. The OpenClaw adapter also still serves one
+account, so multi-agent *communication* remains WP5A regardless of what Buzz
+can now enroll.
 
 ### Focused Buzz branches
 
