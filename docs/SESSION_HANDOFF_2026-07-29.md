@@ -83,12 +83,16 @@ reviewing the eight new upstream commits.
 
 ### RC5 harness-roster branch
 
+Retired 2026-07-30: the `lunar-park/rc5-harness-roster` ref was deleted after
+confirming `14103c14d` is an ancestor of `lunar-park/rc-p6-owner-attestation`, so
+the commit is preserved and the intermediate ref was redundant. The work is
+described here for history; it now lives in that branch.
+
 ```text
 worktree  /Users/dspury/Projects/buzz-rc5-roster
-branch    lunar-park/rc5-harness-roster
-head      14103c14d
+branch    lunar-park/rc-p6-owner-attestation (was rc5-harness-roster)
+head      14103c14d (first of eight commits)
 base      b19fd1508 (the preserved integration test point)
-state     clean, local-only
 ```
 
 Branched from the integration test point rather than committed onto it, so the
@@ -556,26 +560,83 @@ production identity sitting in the canary channel is an unnecessary
 cross-authority hazard and a mention aimed at the wrong "Selene" would pollute
 the evidence. Removal needs an owner-signed kind:9001 from Desktop.
 
-### Exactly what remains for Gate C
+### Gate C live-test runbook — 2026-07-30
 
-1. Remove `2311ce81…efa6` from `dff91016…`.
-2. Enable: `channels.buzz.enabled true --strict-json`, `config validate`,
-   `gateway restart`, `gateway status`, Discord probe.
-3. Send **one** owner mention from the Desktop app, selecting the connected
-   agent from the `@` autocomplete so a `p` tag is emitted. A plain-text
-   `@Selene` does not qualify: the message already in that channel
-   (`e2eefce8…`, `@Selene hey`) carries only an `h` tag and will be replayed
-   from the cursor and durably classified missing-mention with no reply — a
-   free negative case worth capturing.
-4. Verify one reply: author `4687f50d…`, `h` = `dff91016…`, correct immediate
-   parent, correct NIP-10 root; `inbound.completed` with `activation=accepted`,
-   one `outbound status=sent`, zero pending.
-5. `gateway restart`, then re-verify: still one reply, one outbound row, no
-   second model turn.
-6. Disable and preserve evidence.
+Refreshed for the current build and state. Sequencing decision on record: the
+fork rebase and upstream PR split happen **after** this gate, so a Gate C failure
+cannot be confused with a rebase regression.
 
-Reply verification needs no owner private key — the relay's own store is
-authoritative:
+**Build to test with.** The P2/P6 build, not the original integration app:
+
+```text
+worktree   /Users/dspury/Projects/buzz-rc5-roster
+branch     lunar-park/rc-p6-owner-attestation @ c29c4b161
+process    running, pid 8012, Vite 52510
+identity   6ff3b9d4… (dmtri), loaded from the integration instance's keyring
+           service via BUZZ_DEV_KEYRING_SERVICE — no key was minted or moved
+```
+
+The running binary is current: the only commit after it was built is
+frontend-only and hot-reloaded. Its app-data directory is separate from the
+integration app's, so the earlier Gate C setup is untouched — but its community
+list and connected-agent record are its own and start empty.
+
+**Live state on lunar01, verified 2026-07-30:**
+
+```text
+channels.buzz.enabled     false
+channels.buzz.ownerPubkey 6ff3b9d49d59b3e6656dc3a938f800bc3b0d0b675969593fd85ea018bc34c297
+channels.buzz.channelIds  ["dff91016-e5d1-4929-b4d8-5d78b3379f05"]
+channels.buzz.relayUrl    ws://lunar01:3000
+gateway pid               10374, stable
+legacy health             8900=200  9102=200
+```
+
+#### Step 0 — clear the one blocker (operator, in the app)
+
+`selene-gate-c` still has three members:
+
+```text
+6ff3b9d4…c297  owner   Desktop owner
+4687f50d…e3c9  member  connected canary        ← intended
+2311ce81…efa6  member  legacy production Selene ← remove this
+```
+
+The legacy connector subscribes each agent to a global `#p` mention filter, so
+that identity would act on any mention of itself in this channel. Removal needs
+an owner-signed kind:9001 from Desktop.
+
+#### Step 1 — put the test build in the right community (operator)
+
+In the running app, join an existing community: `ws://lunar01:3000` — with the
+scheme, because a scheme-less value is upgraded to `wss://` and fails. Open relay,
+no token. `selene-gate-c` should then appear.
+
+#### Step 2 — enable the adapter (changes live state)
+
+```bash
+OPENCLAW_BIN=/opt/homebrew/bin/openclaw
+"$OPENCLAW_BIN" config set channels.buzz.enabled true --strict-json
+"$OPENCLAW_BIN" config validate
+"$OPENCLAW_BIN" gateway restart && "$OPENCLAW_BIN" gateway status
+"$OPENCLAW_BIN" channels status --channel discord --probe --json
+```
+
+Record the Gateway PID after the restart; it must stay stable through the turn.
+
+#### Step 3 — send exactly one owner mention (operator)
+
+Pick the agent from the `@` autocomplete so a real `p` tag is emitted — a
+plain-text `@name` carries only an `h` tag and is durably ignored. The canary
+appears as **`buzz-canary-agent-be24e64`** (its kind:0 name), not as "Selene":
+the earlier `set-add-policy` clobber dropped `display_name` from its kind:10100.
+That is the unambiguous label, and it cannot be confused with the legacy Selene.
+
+Expect the pre-existing `@Selene hey` (`e2eefce8…`, no `p` tag) to be replayed
+from the cursor and durably classified missing-mention with no reply — a free
+negative case worth capturing.
+
+#### Step 4 — verify one reply (read-only, no owner key needed)
 
 ```sql
 SELECT encode(id,'hex'), encode(pubkey,'hex'), kind, tags
@@ -586,11 +647,31 @@ SELECT encode(id,'hex'), encode(pubkey,'hex'), kind, tags
  ORDER BY created_at;
 ```
 
-Rollback restores `ownerPubkey=626ad40d…6609` and
+Require: author `4687f50d…`, `h` = `dff91016…`, correct immediate parent, correct
+NIP-10 root. Adapter state: `inbound.completed` with `activation=accepted`, one
+`outbound status=sent`, zero pending.
+
+#### Step 5 — restart and re-verify
+
+`openclaw gateway restart`, then repeat step 4. Require one reply, one outbound
+row, no second model turn.
+
+#### Step 6 — disable and preserve evidence
+
+```bash
+"$OPENCLAW_BIN" config set channels.buzz.enabled false --strict-json
+"$OPENCLAW_BIN" config validate
+"$OPENCLAW_BIN" gateway restart && "$OPENCLAW_BIN" gateway status
+test "$("$OPENCLAW_BIN" config get channels.buzz.enabled)" = false
+```
+
+#### Rollback
+
+Restore `ownerPubkey=626ad40d…6609` and
 `channelIds=["d18b14c3-7e55-48b7-b980-f9de29ba5cb8"]` through the same batch
-form, then `config validate`, `gateway restart`, and both legacy health checks.
-Do not touch `plugins.load.paths`, the legacy LaunchAgents, or the canary
-secret.
+form, `config validate`, `gateway restart`, then confirm both legacy endpoints
+return 200. Do not touch `plugins.load.paths`, the legacy LaunchAgents, or the
+canary secret.
 
 ## 4. Product issues now tracked in the specification
 
