@@ -48,6 +48,9 @@ Fork-only runtime material, private deployment configuration, dated handoffs,
 and Lunar Park planning docs stay on `lunar/integration` or archives; they must
 not be included in upstream PR branches.
 
+Use [`UPSTREAM_PR_PLAYBOOK.md`](UPSTREAM_PR_PLAYBOOK.md) for the focused-branch
+checklist, scope gate, validation gate, and reusable PR wording.
+
 ## Authority order
 
 When documents disagree, use this order:
@@ -82,6 +85,7 @@ When documents disagree, use this order:
 | `REMOTE_AGENT_CONNECT_IMPLEMENTATION_PLAN.md` | Buzz execution plan | RC work packages, Buzz files, branch state, validation | OpenClaw implementation internals |
 | `RESIDENT_AGENT_ADAPTER_IMPLEMENTATION_PLAN.md` | adapter execution plan | WP work packages, plugin state, canary/cutover gates | duplicated product requirements |
 | `RESIDENT_AGENT_ADAPTER_IMPLEMENTATION_MAP.md` | architecture reference | stable package/repository ownership | volatile status or next-session instructions |
+| `UPSTREAM_PR_PLAYBOOK.md` | PR preparation playbook | focused-branch checklist, scope gate, validation commands, reusable PR wording | product requirements or live runtime state |
 | `AGENT_HARNESS_BYOH_ACCEPTANCE.md` | evidence record | Buzz-managed ACP lane evidence | resident-plugin readiness claims |
 | `AGENT_HARNESS_ADAPTER_ALIGNMENT_REPORT.md` | historical assessment | the 2026-07-26 architecture review | current execution authority |
 | `SESSION_HANDOFF_*.md` | session snapshot | verified heads, runtime state, test observations, next action | new architecture decisions |
