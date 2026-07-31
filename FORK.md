@@ -79,13 +79,19 @@ They are no longer the target architecture:
   adapters when the generic CLI/Nostr surface is sufficient.
 - Coordinate with overlapping upstream work before publishing competing PRs.
 
-## Current State — 2026-07-30
+## Current State — 2026-07-31
 
-The fork is now the clean patch queue this document calls for: `main` is
-current `upstream/main` plus, in order, the product-gate layer and the rebased
-self-hosted-agent stack. The pre-consolidation lineages are preserved as tags
-(`archive/origin-main-2026-07-24`, `archive/upstream-merge`) and are historical
-only.
+The fork now uses a clean-base plus integration-branch model:
+
+- `main` is an exact mirror of current `upstream/main`;
+- `lunar/integration` is the complete intentional Lunar Park fork delta replayed
+  on that clean base;
+- `pr/<topic>` branches are the only branches that should become draft upstream
+  PRs after review.
+
+The pre-cleanup state is preserved under `archive/*` refs. Use
+`git diff upstream/main...lunar/integration` to inspect the full fork delta.
+Do not use `main` as the fork patch queue.
 
 Gate layer (every strip is now an explicit, tested gate — no deletions):
 
@@ -100,21 +106,23 @@ Gate layer (every strip is now an explicit, tested gate — no deletions):
 `Restore Buzz starter agents` (new-agent menu) re-adds the bundled pack on
 demand regardless of the persona gate.
 
-Product stack on main: WP1–WP3 external-agent CLI contract, RC1 keys, RC2
-profile-safe writes, RC3 SSH discovery, RC4 connected agents, channel/team
-unification, RC5 roster detection, P6 owner attestation, P1 host-side identity
-onboarding, community scoping, P2 two-stage removal (fully wired, including
-the card menu and starter-template restore), and RC6 Buzz-side DM ingress
-(`buzz listen --dms`).
+Product stack on `lunar/integration`: WP1–WP3 external-agent CLI contract, RC1
+keys, RC2 profile-safe writes, RC3 SSH discovery, RC4 connected agents,
+channel/team unification, RC5 roster detection, P6 owner attestation, P1
+host-side identity onboarding, community scoping, P2 two-stage removal (fully
+wired, including the card menu and starter-template restore), RC6 Buzz-side DM
+ingress (`buzz listen --dms`), and the current channel/DM agent behavior
+controls proven in live Selene testing.
 
 Current status:
 
 - Gate C canary retired 2026-07-30: OpenClaw-in-Buzz was proven live (roster
-  picker end-to-end, connection, channel add, team membership); practice usage
-  supersedes the remaining canary matrix.
-- Phase 3 live enablement is ready; the runbook is in the current session
-  handoff. The legacy connector remains the production/rollback path until the
-  practice soak passes.
+  picker end-to-end, connection, channel add, team membership). Subsequent live
+  testing confirmed Selene channel replies, inline reply mode, DM no-mention
+  wakeup, and DM inline replies.
+- Upstream PR preparation is in progress. The legacy connector remains the
+  production/rollback path until the native path has enough practice soak and
+  restart/replay evidence.
 - Native Hermes plugin: not started. Production connector cutover: not started.
 - Upstream PR candidates are prepared, not opened: `pr/keys-generate`,
   `pr/profile-clobber-fix`. WP1/WP2 are superseded by open upstream PRs
@@ -140,7 +148,9 @@ owns policy only. It must not become a second execution log.
 
 - `origin` points to `Lunar-Park/buzz`.
 - `upstream` points to `block/buzz`.
-- Start each upstreamable change from refreshed `upstream/main`.
+- Keep `origin/main` equal to `upstream/main`.
+- Keep the full Lunar Park delta on `lunar/integration`.
+- Start each upstreamable change from refreshed `origin/main` / `upstream/main`.
 - Keep identity, listener, fixtures, and optional directory publication as
   independently reviewable units.
 - Run the full Buzz quality gate before any PR and sign commits for DCO.
