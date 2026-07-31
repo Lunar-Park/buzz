@@ -1,7 +1,8 @@
 # Session Handoff — 2026-07-29
 
-Status: current handoff for the OpenClaw/Buzz Desktop integration test.
-Supersedes the
+Status: superseded historical handoff for the OpenClaw/Buzz Desktop integration
+test. Superseded by
+[`SESSION_HANDOFF_2026-07-31.md`](SESSION_HANDOFF_2026-07-31.md). It superseded the
 [pre-integration review handoff](history/SESSION_HANDOFF_2026-07-29_PRE_INTEGRATION.md).
 
 Read first:

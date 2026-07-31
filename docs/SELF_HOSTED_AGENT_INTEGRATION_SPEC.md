@@ -1,7 +1,7 @@
 # Self-Hosted Agent Integration Specification
 
 Status: accepted product baseline; implementation gaps remain. Updated
-2026-07-29.
+2026-07-31.
 
 This is the canonical product specification for connecting host-owned resident
 agents to Buzz. It covers the user-visible contract shared by Buzz Desktop and
@@ -199,6 +199,12 @@ Buzz pubkey
 - A Buzz DM uses its stable DM channel UUID as the OpenClaw `direct` peer ID.
   The adapter passes that address to OpenClaw's normal router rather than
   maintaining a separate DM session system.
+- Buzz stores per-channel agent reply placement as `agent_reply_mode`. The
+  default is `thread`; `inline` tells adapters to publish the response directly
+  in the channel/DM instead of creating a reply thread.
+- DMs additionally store `dm_require_mention`. The default is `true`; owners
+  may set it to `false` for an owned-agent DM so a direct message wakes the
+  agent without typing its name.
 - OpenClaw's configured `session.dmScope` remains authoritative. Its native
   `main` behavior preserves one-owner continuity; multi-user deployments may
   choose `per-peer`, `per-channel-peer`, or
@@ -210,8 +216,8 @@ Buzz pubkey
   onboarding must ensure both are configured before declaring an agent ready.
 
 The current channel plugin already uses OpenClaw's agent and session router for
-channel/thread lanes. DM parity requires Buzz NIP-17 ingress/decryption and a
-`direct` peer mapping, but it does not require a second conversation
+channel/thread lanes. DM parity uses the stable Buzz DM channel UUID as the
+adapter's `direct` peer mapping and does not require a second conversation
 architecture.
 
 ## 6. Removal and lifecycle
@@ -257,17 +263,22 @@ operation governed by the resident-adapter cutover plan.
 - the native adapter is enabled only for the intended identity and channel;
 - one owner mention reaches Selene, carrying a real `p` tag rather than
   plain-text `@name`;
-- one correctly signed reply appears in the expected thread;
+- one correctly signed reply appears in the configured placement (`thread` by
+  default, `inline` when the channel policy disables threaded replies);
 - missing-mention, non-owner, and self-authored events do not trigger a reply;
 - restart recovery produces no duplicate reply or model turn.
 
-Gate C is the current blocking gate. UI connection alone does not satisfy it.
+Gate C requires the full matrix above. UI connection alone does not satisfy it,
+and a single successful round trip must still be paired with negative-path and
+restart/replay checks before cutover.
 
 ### Gate D — direct-message parity
 
 - Buzz NIP-17 messages are decrypted and normalized before adapter policy;
 - the stable Buzz DM channel UUID reaches OpenClaw as a `direct` peer;
-- one DM produces one correctly signed reply in the same Buzz conversation;
+- one DM produces one correctly signed reply in the same Buzz conversation,
+  using that DM's configured thread/inline placement;
+- owned-agent DMs can be configured to wake without an explicit @mention;
 - repeated DMs reuse or isolate the OpenClaw session according to the
   configured `session.dmScope`;
 - a DM restart/replay produces no duplicate turn or reply;
@@ -297,7 +308,7 @@ first-class.
 
 ## 8. Current implementation status
 
-As of 2026-07-29:
+As of 2026-07-31:
 
 - SSH host/harness discovery is implemented and manually worked against
   `lunar01`.
@@ -308,10 +319,15 @@ As of 2026-07-29:
 - The current native OpenClaw adapter supports one top-level Buzz account.
 - The corrected no-final-turn narrow canary passed and the channel was disabled
   afterward.
-- No message from the current Buzz Desktop integration build has yet completed
-  a round trip through Selene.
+- A current Buzz Desktop integration build has completed live Selene round
+  trips in a channel and in a DM.
+- Channel/DM agent reply placement is configurable per conversation through
+  `agent_reply_mode`; the default is threaded replies and inline replies are
+  opt-in.
+- Owned-agent DMs can be configured with `dm_require_mention=false`, allowing
+  direct DM messages to wake the agent without an explicit @mention.
 - Automatic public-key retrieval/generation, managed-agent archive/deletion,
-  selective multi-agent enrollment, and direct messages remain open.
+  and selective multi-agent enrollment remain open.
 - Connected-agent addressability (§4.2) was the actual reason the first
   round-trip attempt could not run: the Desktop build and the adapter addressed
   two different communities, the agent's key was not a member of the Desktop
@@ -338,9 +354,11 @@ As of 2026-07-29:
   roster returned. Selection UI and per-agent identity minting remain open, and
   the current OpenClaw adapter still serves one account, so multi-agent
   *communication* remains WP5A.
+- Full Gate C/Gate D cutover evidence still requires the explicit negative-path
+  and restart/replay checks in §7.
 
 Exact commits, installed paths, tests, and runtime state belong in the current
-[session handoff](SESSION_HANDOFF_2026-07-29.md).
+[session handoff](SESSION_HANDOFF_2026-07-31.md).
 
 ## 9. Deferred scope
 
@@ -371,3 +389,6 @@ Recorded with the user on 2026-07-29:
    complete durable roster without enrolling it automatically.
 4. DMs use Buzz's stable DM conversation identity and OpenClaw's native direct
    routing/session behavior; they do not need a separate session architecture.
+5. Agent reply placement is a per-channel/DM policy. Threaded replies remain
+   the default, inline replies are opt-in, and owned-agent DMs may opt out of
+   requiring explicit @mentions.

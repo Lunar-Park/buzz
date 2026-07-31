@@ -15,10 +15,18 @@ use crate::error::CliError;
 use crate::validate::{parse_uuid, read_or_stdin, validate_hex64, validate_uuid};
 
 fn extract_channel_metadata(e: &serde_json::Value) -> serde_json::Value {
+    let agent_reply_mode = match extract_tag_value(e, "agent_reply_mode").as_str() {
+        "inline" => "inline",
+        _ => "thread",
+    };
+    let dm_require_mention = extract_tag_value(e, "dm_require_mention") != "false";
     serde_json::json!({
         "channel_id": extract_d_tag(e),
         "name": extract_tag_value(e, "name"),
+        "channel_type": extract_tag_value(e, "t"),
         "description": extract_tag_value(e, "about"),
+        "agent_reply_mode": agent_reply_mode,
+        "dm_require_mention": dm_require_mention,
         "created_at": e.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0),
     })
 }
@@ -162,6 +170,8 @@ struct ChannelSummary {
     about: Option<String>,
     topic: Option<String>,
     purpose: Option<String>,
+    agent_reply_mode: String,
+    dm_require_mention: bool,
 }
 
 impl ChannelSummary {
@@ -177,6 +187,8 @@ impl ChannelSummary {
         let mut about: Option<String> = None;
         let mut topic: Option<String> = None;
         let mut purpose: Option<String> = None;
+        let mut agent_reply_mode = "thread".to_string();
+        let mut dm_require_mention = true;
 
         for tag in tags {
             let Some(tag_arr) = tag.as_array() else {
@@ -195,6 +207,12 @@ impl ChannelSummary {
                 "about" => about = val.map(str::to_string),
                 "topic" => topic = val.map(str::to_string),
                 "purpose" => purpose = val.map(str::to_string),
+                "agent_reply_mode" => {
+                    if val == Some("inline") {
+                        agent_reply_mode = "inline".to_string();
+                    }
+                }
+                "dm_require_mention" => dm_require_mention = val != Some("false"),
                 "archived" => archived = val == Some("true"),
                 _ => {}
             }
@@ -209,6 +227,8 @@ impl ChannelSummary {
             about,
             topic,
             purpose,
+            agent_reply_mode,
+            dm_require_mention,
         })
     }
 }
@@ -837,6 +857,8 @@ pub async fn cmd_update_channel(
     description: Option<&str>,
     ttl: Option<i64>,
     no_ttl: bool,
+    agent_reply_mode: Option<&str>,
+    dm_require_mention: Option<bool>,
 ) -> Result<(), CliError> {
     // Outer Option: None leaves TTL unchanged. Inner: Some(secs) sets it,
     // None (from --no-ttl) clears it, making the channel permanent.
@@ -846,15 +868,28 @@ pub async fn cmd_update_channel(
         (None, false) => None,
     };
 
-    if name.is_none() && description.is_none() && ttl_change.is_none() {
+    if name.is_none()
+        && description.is_none()
+        && ttl_change.is_none()
+        && agent_reply_mode.is_none()
+        && dm_require_mention.is_none()
+    {
         return Err(CliError::Usage(
-            "at least one field required (--name, --description, --ttl, --no-ttl)".into(),
+            "at least one field required (--name, --description, --ttl, --no-ttl, --agent-reply-mode, --dm-require-mention, --no-dm-require-mention)".into(),
         ));
     }
     let channel_uuid = parse_uuid(channel_id)?;
 
-    let builder = buzz_sdk::build_update_channel(channel_uuid, name, description, None, ttl_change)
-        .map_err(|e| CliError::Other(format!("build_update_channel failed: {e}")))?;
+    let builder = buzz_sdk::build_update_channel(
+        channel_uuid,
+        name,
+        description,
+        None,
+        ttl_change,
+        agent_reply_mode,
+        dm_require_mention,
+    )
+    .map_err(|e| CliError::Other(format!("build_update_channel failed: {e}")))?;
 
     let event = client.sign_event(builder)?;
     let resp = client.submit_event(event).await?;
@@ -1126,7 +1161,15 @@ pub async fn dispatch(
             description,
             ttl,
             no_ttl,
+            agent_reply_mode,
+            dm_require_mention,
+            no_dm_require_mention,
         } => {
+            let dm_require_mention = match (dm_require_mention, no_dm_require_mention) {
+                (true, _) => Some(true),
+                (false, true) => Some(false),
+                (false, false) => None,
+            };
             cmd_update_channel(
                 client,
                 &channel,
@@ -1134,6 +1177,8 @@ pub async fn dispatch(
                 description.as_deref(),
                 ttl,
                 no_ttl,
+                agent_reply_mode.as_deref(),
+                dm_require_mention,
             )
             .await
         }

@@ -16,11 +16,15 @@ cargo install --path crates/buzz-cli
 | Env Var | Mode | Use Case |
 |---------|------|----------|
 | `BUZZ_PRIVATE_KEY` | NIP-98 Schnorr signature | Agents with a keypair |
+| `BUZZ_AUTH_TAG` | NIP-OA owner attestation | Delegated agents whose owner authorizes relay access |
 
 ```bash
 # Private key identity (NIP-98 signed requests)
 export BUZZ_PRIVATE_KEY="nsec1..."
 buzz channels list
+
+# Delegated owner attestation (optional)
+export BUZZ_AUTH_TAG='["auth","<owner-pubkey>","<conditions>","<signature>"]'
 ```
 
 ### Minting an identity for a self-hosted agent
@@ -71,8 +75,13 @@ buzz messages send-diff --channel <uuid> --diff - --repo https://github.com/org/
 # Channels
 buzz channels list
 buzz channels create --name "my-channel" --type stream --visibility open
+buzz channels update --channel <uuid> --agent-reply-mode inline
+buzz channels update --channel <dm-uuid> --no-dm-require-mention
 buzz channels join --channel <uuid>
 buzz channels topic --channel <uuid> --topic "New topic"
+
+# External-agent event stream
+buzz listen --channel <uuid> --mentions-of-me --envelope v1
 
 # Reactions
 buzz reactions add --event <event-id> --emoji "👍"
@@ -138,10 +147,11 @@ stored rules in `validation_error` so an owner can remove and repair them.
 | | `thread` | Get a message thread |
 | | `search` | Full-text search, filterable by author |
 | | `vote` | Vote on a forum post |
+| `listen` | | Stream matching relay events as newline-delimited JSON |
 | `channels` | `list` | List channels |
 | | `get` | Get channel details |
 | | `create` | Create a channel |
-| | `update` | Update channel name/description |
+| | `update` | Update channel metadata, TTL, and agent behavior policy |
 | | `topic` | Set channel topic |
 | | `purpose` | Set channel purpose |
 | | `join` | Join a channel |
@@ -160,8 +170,8 @@ stored rules in `validation_error` so an owner can remove and repair them.
 | `dms` | `list` | List DM conversations |
 | | `open` | Open a DM (1–8 pubkeys) |
 | | `add-member` | Add member to DM group |
-| `users` | `get` | Get user profile(s) |
-| | `me` | Print the active local identity |
+| `users` | `me` | Print this CLI identity |
+| | `get` | Get user profile(s) |
 | | `set-profile` | Update your profile |
 | | `presence` | Get presence status |
 | | `set-presence` | Set presence status |
