@@ -599,6 +599,8 @@ type RawChannel = {
   participant_pubkeys: string[];
   ttl_seconds: number | null;
   ttl_deadline: string | null;
+  agent_reply_mode?: "thread" | "inline";
+  dm_require_mention?: boolean;
 };
 
 type RawChannelWithMembership = RawChannel & {
@@ -1404,6 +1406,8 @@ function toRawChannel(
     participant_pubkeys: [...channel.participant_pubkeys],
     ttl_seconds: channel.ttl_seconds ?? null,
     ttl_deadline: channel.ttl_deadline ?? null,
+    agent_reply_mode: channel.agent_reply_mode ?? "thread",
+    dm_require_mention: channel.dm_require_mention ?? true,
     is_member: channel.members.some(
       (member) => member.pubkey.toLowerCase() === currentPubkey,
     ),
@@ -6275,6 +6279,8 @@ async function handleUpdateChannel(
     description?: string;
     visibility?: "open" | "private";
     ttlSeconds?: number | null;
+    agentReplyMode?: "thread" | "inline";
+    dmRequireMention?: boolean;
   },
   config: E2eConfig | undefined,
 ) {
@@ -6302,6 +6308,12 @@ async function handleUpdateChannel(
           ? null
           : new Date(Date.now() + args.ttlSeconds * 1000).toISOString();
     }
+    if (args.agentReplyMode !== undefined) {
+      channel.agent_reply_mode = args.agentReplyMode;
+    }
+    if (args.dmRequireMention !== undefined) {
+      channel.dm_require_mention = args.dmRequireMention;
+    }
     touchMockChannel(channel);
     return toRawChannelDetail(channel, config);
   }
@@ -6318,6 +6330,12 @@ async function handleUpdateChannel(
   }
   if (args.ttlSeconds !== undefined) {
     tags.push(["ttl", args.ttlSeconds === null ? "" : String(args.ttlSeconds)]);
+  }
+  if (args.agentReplyMode !== undefined) {
+    tags.push(["agent_reply_mode", args.agentReplyMode]);
+  }
+  if (args.dmRequireMention !== undefined) {
+    tags.push(["dm_require_mention", args.dmRequireMention ? "true" : "false"]);
   }
   await submitSignedEvent(config, { kind: 9002, content: "", tags });
 
@@ -6347,6 +6365,9 @@ async function handleUpdateChannel(
       ttlSeconds === null
         ? null
         : new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+    agent_reply_mode:
+      getTag("agent_reply_mode") === "inline" ? "inline" : "thread",
+    dm_require_mention: getTag("dm_require_mention") !== "false",
     created_at: ev?.created_at
       ? new Date(ev.created_at * 1000).toISOString()
       : new Date().toISOString(),
