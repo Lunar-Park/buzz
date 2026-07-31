@@ -675,6 +675,15 @@ pub enum ChannelsCmd {
         /// Clear an existing TTL, making the channel permanent.
         #[arg(long)]
         no_ttl: bool,
+        /// Agent reply placement: thread or inline.
+        #[arg(long, value_parser = ["thread", "inline"])]
+        agent_reply_mode: Option<String>,
+        /// Require @mentions to wake agents in this DM.
+        #[arg(long, conflicts_with = "no_dm_require_mention")]
+        dm_require_mention: bool,
+        /// Allow direct messages to wake agents without @mentions.
+        #[arg(long)]
+        no_dm_require_mention: bool,
     },
     /// Set the channel topic
     Topic {
