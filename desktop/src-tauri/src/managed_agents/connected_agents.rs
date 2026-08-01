@@ -45,10 +45,10 @@ use super::storage::{atomic_write_json, backup_invalid_store, managed_agents_bas
 /// auto-start flag, and no pid: this type cannot describe a process, so no
 /// amount of downstream code can use it to start one.
 ///
-/// There is also no `relay_url`. Every agent relay lookup resolves the active
-/// workspace relay at read time (see
-/// [`crate::relay::effective_agent_relay_url`]), so a stored per-agent relay
-/// could only ever be a stale value the rest of the app ignores.
+/// There is no operational `relay_url`. Every agent relay lookup resolves the
+/// active workspace relay at read time (see
+/// [`crate::relay::effective_agent_relay_url`]). The optional `community` below
+/// is only a display-scope marker; it is never used to route agent traffic.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ConnectedAgentRecord {
     /// The agent's own pubkey, 64-char lowercase hex. Normalized at the connect
@@ -68,6 +68,11 @@ pub struct ConnectedAgentRecord {
     /// executes it. `None` when the user connected without a completed probe.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub harness: Option<String>,
+    /// Normalized relay URL identifying the community where this connection
+    /// was created. Records written before this field was introduced remain
+    /// readable and visible until they are reconnected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub community: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -94,6 +99,9 @@ pub struct ConnectedAgentSummary {
     pub name: String,
     pub host: String,
     pub harness: Option<String>,
+    /// Community where this connection was created, or `None` for a legacy
+    /// record that predates community scoping.
+    pub community: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -108,6 +116,7 @@ impl From<&ConnectedAgentRecord> for ConnectedAgentSummary {
             name: record.name.clone(),
             host: record.host.clone(),
             harness: record.harness.clone(),
+            community: record.community.clone(),
             created_at: record.created_at.clone(),
             updated_at: record.updated_at.clone(),
         }
@@ -191,6 +200,11 @@ fn sort_for_stable_diffs(records: &mut [ConnectedAgentRecord]) {
             .cmp(&right.name.to_lowercase())
             .then_with(|| left.pubkey.cmp(&right.pubkey))
     });
+}
+
+/// Normalize a relay URL so equivalent community spellings compare equally.
+pub fn normalize_community_url(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_ascii_lowercase()
 }
 
 #[cfg(test)]

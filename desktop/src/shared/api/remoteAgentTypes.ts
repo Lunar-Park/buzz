@@ -116,6 +116,8 @@ export type ConnectedAgent = {
    * record of what was there — nothing in Buzz executes it.
    */
   harness: string | null;
+  /** Community where this connection was created, or `null` for legacy records. */
+  community: string | null;
   createdAt: string;
   updatedAt: string;
 };

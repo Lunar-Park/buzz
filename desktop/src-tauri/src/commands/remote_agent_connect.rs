@@ -225,7 +225,12 @@ pub async fn connect_remote_agent(
         }
 
         let now = now_iso();
-        let record = connected_record(&host, &pubkey, &name, harness, &now);
+        // Stamp the record from Buzz's active workspace rather than accepting a
+        // caller-supplied community assertion.
+        let community = crate::managed_agents::normalize_community_url(
+            &crate::relay::relay_ws_url_with_override(&state),
+        );
+        let record = connected_record(&host, &pubkey, &name, harness, Some(community), &now);
         let summary = ConnectedAgentSummary::from(&record);
 
         let mut connected = connected;
@@ -250,6 +255,7 @@ pub(crate) fn connected_record(
     pubkey: &str,
     name: &str,
     harness: Option<String>,
+    community: Option<String>,
     now: &str,
 ) -> ConnectedAgentRecord {
     ConnectedAgentRecord {
@@ -257,6 +263,7 @@ pub(crate) fn connected_record(
         name: name.to_string(),
         host: host.to_string(),
         harness,
+        community,
         created_at: now.to_string(),
         updated_at: now.to_string(),
     }

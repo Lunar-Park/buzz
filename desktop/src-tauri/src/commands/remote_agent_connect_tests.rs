@@ -9,6 +9,7 @@ fn sample_record() -> ConnectedAgentRecord {
         AGENT_HEX,
         "Scout",
         Some("claude".to_string()),
+        Some("wss://community.example".to_string()),
         "2026-07-28T00:00:00Z",
     )
 }
@@ -107,6 +108,7 @@ fn a_connected_record_stores_the_identity_and_the_host_and_nothing_else() {
     assert_eq!(
         keys,
         [
+            "community",
             "created_at",
             "harness",
             "host",
@@ -129,6 +131,7 @@ fn a_probeless_connect_stores_no_harness_key_at_all() {
         "workstation",
         AGENT_HEX,
         "Scout",
+        None,
         None,
         "2026-07-28T00:00:00Z",
     );

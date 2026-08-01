@@ -10,8 +10,13 @@ import { addChannelMembers } from "@/shared/api/tauri";
 import type { Channel, ChannelRole } from "@/shared/api/types";
 import { channelsQueryKey } from "@/features/channels/hooks";
 import { relayAgentsQueryKey } from "@/features/agents/hooks";
+import {
+  loadActiveCommunityId,
+  loadCommunities,
+} from "@/features/communities/communityStorage";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { connectedAgentMembershipAdded } from "./connectedAgentChannelIntent";
+import { connectedAgentsForCommunity } from "./connectedAgentScope";
 
 export const connectedAgentsQueryKey = ["connected-agents"] as const;
 
@@ -88,6 +93,15 @@ export function useConnectedAgentsQuery() {
   });
 }
 
+function activeCommunityRelayUrl(): string | null {
+  const activeId = loadActiveCommunityId();
+  if (!activeId) return null;
+  return (
+    loadCommunities().find((community) => community.id === activeId)
+      ?.relayUrl ?? null
+  );
+}
+
 /**
  * State and actions for the Connected-agents section.
  *
@@ -97,6 +111,8 @@ export function useConnectedAgentsQuery() {
 export function useConnectedAgents() {
   const queryClient = useQueryClient();
   const query = useConnectedAgentsQuery();
+  // The community-scoped app subtree remounts when the active community changes.
+  const activeRelayUrl = React.useMemo(activeCommunityRelayUrl, []);
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [agentToAddToChannel, setAgentToAddToChannel] =
     React.useState<ConnectedAgent | null>(null);
@@ -143,7 +159,7 @@ export function useConnectedAgents() {
   );
 
   return {
-    agents: query.data ?? [],
+    agents: connectedAgentsForCommunity(query.data ?? [], activeRelayUrl),
     agentToAddToChannel,
     error: query.error instanceof Error ? query.error : null,
     isLoading: query.isLoading,

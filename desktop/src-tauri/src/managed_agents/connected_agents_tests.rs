@@ -15,7 +15,8 @@
 use std::fs;
 
 use super::{
-    load_connected_agents_at, save_connected_agents_at, ConnectedAgentRecord, ConnectedAgentSummary,
+    load_connected_agents_at, normalize_community_url, save_connected_agents_at,
+    ConnectedAgentRecord, ConnectedAgentSummary,
 };
 use crate::managed_agents::ManagedAgentRecord;
 
@@ -28,6 +29,7 @@ fn connected(pubkey: &str, name: &str, host: &str) -> ConnectedAgentRecord {
         name: name.to_string(),
         host: host.to_string(),
         harness: Some("claude".to_string()),
+        community: None,
         created_at: "2026-07-28T00:00:00Z".to_string(),
         updated_at: "2026-07-28T00:00:00Z".to_string(),
     }
@@ -234,6 +236,15 @@ fn the_summary_is_a_lossless_projection_of_the_record() {
     assert_eq!(summary.name, record.name);
     assert_eq!(summary.host, record.host);
     assert_eq!(summary.harness, record.harness);
+    assert_eq!(summary.community, record.community);
     assert_eq!(summary.created_at, record.created_at);
     assert_eq!(summary.updated_at, record.updated_at);
+}
+
+#[test]
+fn community_comparison_ignores_trailing_slashes_and_case() {
+    assert_eq!(
+        normalize_community_url("  wss://Relay.Example.com/ "),
+        "wss://relay.example.com"
+    );
 }

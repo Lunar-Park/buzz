@@ -51,7 +51,8 @@ pub(crate) fn lock_path_mutex() -> std::sync::MutexGuard<'static, ()> {
 
 pub use backend::*;
 pub(crate) use connected_agents::{
-    load_connected_agents, save_connected_agents, ConnectedAgentRecord, ConnectedAgentSummary,
+    load_connected_agents, normalize_community_url, save_connected_agents, ConnectedAgentRecord,
+    ConnectedAgentSummary,
 };
 pub use discovery::*;
 pub use env_vars::*;
