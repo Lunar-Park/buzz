@@ -1,6 +1,7 @@
 import { invokeTauri } from "@/shared/api/tauri";
 import type {
   ConnectedAgent,
+  HarnessRosterResult,
   HostProbeResult,
   SshHost,
 } from "@/shared/api/remoteAgentTypes";
@@ -30,6 +31,27 @@ export async function probeAgentHost(host: string): Promise<HostProbeResult> {
  */
 export async function probeLocalAgentHost(): Promise<HostProbeResult> {
   return await invokeTauri<HostProbeResult>("probe_local_agent_host");
+}
+
+/** List the durable agents held by one harness on a configured host. */
+export async function probeHarnessAgents(
+  host: string,
+  harness: string,
+): Promise<HarnessRosterResult> {
+  return await invokeTauri<HarnessRosterResult>("probe_harness_agents", {
+    host,
+    harness,
+  });
+}
+
+/** List the durable agents held by one harness on this machine. */
+export async function probeLocalHarnessAgentRoster(
+  harness: string,
+): Promise<HarnessRosterResult> {
+  return await invokeTauri<HarnessRosterResult>(
+    "probe_local_harness_agent_roster",
+    { harness },
+  );
 }
 
 /** The self-hosted agents this machine is connected to. */

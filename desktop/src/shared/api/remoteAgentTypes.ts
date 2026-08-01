@@ -92,6 +92,35 @@ export type HostProbeResult = {
 /** Host id the backend uses for the local machine. */
 export const LOCALHOST_HOST_ID = "__localhost__";
 
+/** One durable, named agent reported by a harness. */
+export type RemoteAgentCandidate = {
+  /** Harness that reported this agent, matching `RemoteHarness.id`. */
+  harnessId: string;
+  /** Harness-owned routing key for this exact agent. */
+  agentId: string;
+  /** Best available label; falls back to `agentId`. */
+  displayName: string;
+  /** Whether the harness identifies this candidate as its primary agent. */
+  isPrimary: boolean;
+  model?: string;
+  workspace?: string;
+  /** Existing harness routing bindings, when reported. */
+  bindingCount?: number;
+};
+
+/** Outcome of listing one harness's durable agents. */
+export type HarnessRosterResult = {
+  host: string;
+  harnessId: string;
+  ok: boolean;
+  durationMs: number;
+  /** False when Buzz has no roster recipe for this harness. */
+  supported: boolean;
+  error?: string;
+  errorKind?: HostProbeErrorKind;
+  candidates: RemoteAgentCandidate[];
+};
+
 /**
  * A self-hosted agent Buzz talks to but does not own: it runs on a machine the
  * user owns, supervises itself, and holds its own signing key.

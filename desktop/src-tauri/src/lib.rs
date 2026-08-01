@@ -746,6 +746,8 @@ pub fn run() {
             list_ssh_hosts,
             probe_agent_host,
             probe_local_agent_host,
+            probe_harness_agents,
+            probe_local_harness_agent_roster,
             list_connected_agents,
             connect_remote_agent,
             disconnect_remote_agent,

@@ -45,6 +45,11 @@ use crate::managed_agents::discovery::{harness_probe_targets, HarnessProbeTarget
 use crate::managed_agents::ssh_config::{resolve_ssh_binary, SshHost};
 use crate::managed_agents::HarnessSource;
 
+/// Durable agent-roster enumeration for a harness already found by the probe.
+pub mod roster;
+
+pub use roster::{probe_local_harness_agents, probe_ssh_harness_agents, HarnessRosterResult};
+
 /// Sentinel that brackets the probe's own output.
 ///
 /// A login shell may print motd banners, shell-init chatter, or warnings before
